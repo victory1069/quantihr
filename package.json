@@ -1,0 +1,25 @@
+{
+  "name": "quanti-hr",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Quanti HR — attendance, leave, employee records and manager approvals",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "npm run build --workspace @quanti/shared",
+    "test": "npm run test --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "api": "npm run dev --workspace @quanti/api",
+    "mobile": "npm run web --workspace @quanti/mobile",
+    "console": "npm run dev --workspace @quanti/console",
+    "seed": "npm run seed --workspace @quanti/api"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
+  }
+}

@@ -1,0 +1,373 @@
+/**
+ * Drizzle table definitions.
+ *
+ * `ddl.sql` is authoritative — it owns the RLS policies, partial indexes and
+ * role grants that a schema-diffing tool cannot express. This file mirrors it
+ * for typed queries only. `test/schema-parity.test.ts` asserts the two agree, so
+ * a column added in one place and forgotten in the other fails CI rather than
+ * production.
+ */
+
+import {
+  bigint,
+  boolean,
+  date,
+  doublePrecision,
+  index,
+  integer,
+  jsonb,
+  numeric,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+  uuid,
+} from 'drizzle-orm/pg-core'
+
+const id = () => uuid('id').primaryKey().defaultRandom()
+const orgId = () =>
+  uuid('org_id')
+    .notNull()
+    .references(() => organisations.id, { onDelete: 'cascade' })
+const createdAt = () => timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
+
+export const organisations = pgTable('organisations', {
+  id: id(),
+  name: text('name').notNull(),
+  country: text('country').notNull().default('NG'),
+  timezone: text('timezone').notNull().default('Africa/Lagos'),
+  settings: jsonb('settings').notNull().default({}),
+  createdAt: createdAt(),
+})
+
+export const users = pgTable('users', {
+  id: id(),
+  orgId: orgId(),
+  email: text('email').notNull(),
+  authProvider: text('auth_provider').notNull().default('magic_link'),
+  lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
+  pushToken: text('push_token'),
+  biometricEnabled: boolean('biometric_enabled').notNull().default(false),
+  notificationPreferences: jsonb('notification_preferences').notNull(),
+  createdAt: createdAt(),
+})
+
+export const locations = pgTable('locations', {
+  id: id(),
+  orgId: orgId(),
+  name: text('name').notNull(),
+  address: text('address'),
+  latitude: doublePrecision('latitude').notNull(),
+  longitude: doublePrecision('longitude').notNull(),
+  geofenceRadiusM: integer('geofence_radius_m').notNull().default(150),
+  createdAt: createdAt(),
+})
+
+export const departments = pgTable('departments', {
+  id: id(),
+  orgId: orgId(),
+  name: text('name').notNull(),
+  parentDepartmentId: uuid('parent_department_id'),
+  createdAt: createdAt(),
+})
+
+export const workSchedules = pgTable('work_schedules', {
+  id: id(),
+  orgId: orgId(),
+  name: text('name').notNull(),
+  workingDays: integer('working_days').array().notNull(),
+  startTime: text('start_time').notNull(),
+  endTime: text('end_time').notNull(),
+  gracePeriodMinutes: integer('grace_period_minutes').notNull().default(10),
+  checkinWindowStart: text('checkin_window_start').notNull(),
+  checkinWindowEnd: text('checkin_window_end').notNull(),
+  createdAt: createdAt(),
+})
+
+export const employees = pgTable(
+  'employees',
+  {
+    id: id(),
+    orgId: orgId(),
+    userId: uuid('user_id').references(() => users.id, { onDelete: 'set null' }),
+    employeeNumber: text('employee_number').notNull(),
+    firstName: text('first_name').notNull(),
+    lastName: text('last_name').notNull(),
+    email: text('email').notNull(),
+    phone: text('phone'),
+    departmentId: uuid('department_id').references(() => departments.id, { onDelete: 'set null' }),
+    locationId: uuid('location_id').references(() => locations.id, { onDelete: 'set null' }),
+    managerId: uuid('manager_id'),
+    jobTitle: text('job_title'),
+    band: text('band'),
+    roleId: text('role_id'),
+    employmentType: text('employment_type').notNull().default('full_time'),
+    startDate: date('start_date').notNull(),
+    endDate: date('end_date'),
+    status: text('status').notNull().default('active'),
+    workScheduleId: uuid('work_schedule_id').references(() => workSchedules.id, {
+      onDelete: 'set null',
+    }),
+    roles: text('roles').array().notNull(),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    numberUnique: uniqueIndex('employees_org_number_key').on(t.orgId, t.employeeNumber),
+    managerIdx: index('employees_org_manager_idx').on(t.orgId, t.managerId),
+  }),
+)
+
+export const magicLinkTokens = pgTable('magic_link_tokens', {
+  id: id(),
+  orgId: orgId(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  usedAt: timestamp('used_at', { withTimezone: true }),
+  createdAt: createdAt(),
+})
+
+export const refreshTokens = pgTable('refresh_tokens', {
+  id: id(),
+  orgId: orgId(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  tokenHash: text('token_hash').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
+  createdAt: createdAt(),
+})
+
+export const devices = pgTable('devices', {
+  id: id(),
+  orgId: orgId(),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+  deviceId: text('device_id').notNull(),
+  platform: text('platform').notNull().default('web'),
+  name: text('name'),
+  pushToken: text('push_token'),
+  approved: boolean('approved').notNull().default(true),
+  approvalRequestedAt: timestamp('approval_requested_at', { withTimezone: true }),
+  registeredAt: timestamp('registered_at', { withTimezone: true }).notNull().defaultNow(),
+  lastSeenAt: timestamp('last_seen_at', { withTimezone: true }),
+})
+
+export const checkinCodes = pgTable('checkin_codes', {
+  id: id(),
+  orgId: orgId(),
+  locationId: uuid('location_id').notNull().references(() => locations.id, { onDelete: 'cascade' }),
+  code: text('code').notNull(),
+  validFrom: timestamp('valid_from', { withTimezone: true }).notNull(),
+  validUntil: timestamp('valid_until', { withTimezone: true }).notNull(),
+  createdAt: createdAt(),
+})
+
+export const attendanceRecords = pgTable(
+  'attendance_records',
+  {
+    id: id(),
+    orgId: orgId(),
+    employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+    date: date('date').notNull(),
+    checkedInAt: timestamp('checked_in_at', { withTimezone: true }),
+    clientTimestamp: timestamp('client_timestamp', { withTimezone: true }),
+    checkinMethod: text('checkin_method').notNull().default('geofence_code'),
+    verificationSignals: jsonb('verification_signals').notNull().default({}),
+    latitude: doublePrecision('latitude'),
+    longitude: doublePrecision('longitude'),
+    accuracyM: doublePrecision('accuracy_m'),
+    status: text('status').notNull(),
+    minutesLate: integer('minutes_late').notNull().default(0),
+    rejectionReason: text('rejection_reason'),
+    reason: text('reason'),
+    recordedOffline: boolean('recorded_offline').notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    historyIdx: index('attendance_history_idx').on(t.orgId, t.employeeId, t.date),
+  }),
+)
+
+export const attendanceDisputes = pgTable('attendance_disputes', {
+  id: id(),
+  orgId: orgId(),
+  recordId: uuid('record_id').notNull().references(() => attendanceRecords.id, { onDelete: 'cascade' }),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+  reason: text('reason').notNull(),
+  status: text('status').notNull().default('open'),
+  createdAt: createdAt(),
+})
+
+export const leaveTypes = pgTable('leave_types', {
+  id: id(),
+  orgId: orgId(),
+  name: text('name').notNull(),
+  accrualMethod: text('accrual_method').notNull().default('annual_fixed'),
+  accrualRate: numeric('accrual_rate', { precision: 6, scale: 2 }).notNull().default('0'),
+  maxBalance: numeric('max_balance', { precision: 6, scale: 2 }),
+  carryoverCap: numeric('carryover_cap', { precision: 6, scale: 2 }),
+  carryoverExpiryMonths: integer('carryover_expiry_months'),
+  requiresDocument: boolean('requires_document').notNull().default(false),
+  minNoticeDays: integer('min_notice_days'),
+  isPaid: boolean('is_paid').notNull().default(true),
+  colour: text('colour').notNull().default('#4F46E5'),
+  active: boolean('active').notNull().default(true),
+  createdAt: createdAt(),
+})
+
+export const leaveBalances = pgTable(
+  'leave_balances',
+  {
+    id: id(),
+    orgId: orgId(),
+    employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+    leaveTypeId: uuid('leave_type_id').notNull().references(() => leaveTypes.id, { onDelete: 'cascade' }),
+    periodStart: date('period_start').notNull(),
+    periodEnd: date('period_end').notNull(),
+    accrued: numeric('accrued', { precision: 6, scale: 2 }).notNull().default('0'),
+    taken: numeric('taken', { precision: 6, scale: 2 }).notNull().default('0'),
+    pending: numeric('pending', { precision: 6, scale: 2 }).notNull().default('0'),
+    carriedOver: numeric('carried_over', { precision: 6, scale: 2 }).notNull().default('0'),
+    adjustment: numeric('adjustment', { precision: 6, scale: 2 }).notNull().default('0'),
+    carryoverExpiresOn: date('carryover_expires_on'),
+    computedAt: timestamp('computed_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    periodUnique: uniqueIndex('leave_balances_period_key').on(
+      t.orgId,
+      t.employeeId,
+      t.leaveTypeId,
+      t.periodStart,
+    ),
+  }),
+)
+
+export const leaveBalanceAdjustments = pgTable('leave_balance_adjustments', {
+  id: id(),
+  orgId: orgId(),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+  leaveTypeId: uuid('leave_type_id').notNull().references(() => leaveTypes.id, { onDelete: 'cascade' }),
+  periodStart: date('period_start').notNull(),
+  delta: numeric('delta', { precision: 6, scale: 2 }).notNull(),
+  reason: text('reason').notNull(),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: createdAt(),
+})
+
+export const leaveRequests = pgTable(
+  'leave_requests',
+  {
+    id: id(),
+    orgId: orgId(),
+    employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+    leaveTypeId: uuid('leave_type_id').notNull().references(() => leaveTypes.id, { onDelete: 'cascade' }),
+    startDate: date('start_date').notNull(),
+    endDate: date('end_date').notNull(),
+    daysCount: numeric('days_count', { precision: 6, scale: 2 }).notNull(),
+    halfDayStart: boolean('half_day_start').notNull().default(false),
+    halfDayEnd: boolean('half_day_end').notNull().default(false),
+    reason: text('reason'),
+    status: text('status').notNull().default('pending'),
+    warnings: jsonb('warnings').notNull().default([]),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }).notNull().defaultNow(),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'set null' }),
+    decisionNote: text('decision_note'),
+    overrideReason: text('override_reason'),
+    documentUrl: text('document_url'),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    employeeIdx: index('leave_requests_employee_idx').on(t.orgId, t.employeeId, t.startDate),
+    statusIdx: index('leave_requests_status_idx').on(t.orgId, t.status, t.submittedAt),
+  }),
+)
+
+export const coverageRules = pgTable('coverage_rules', {
+  id: id(),
+  orgId: orgId(),
+  departmentId: uuid('department_id').notNull().references(() => departments.id, { onDelete: 'cascade' }),
+  maxConcurrentAbsent: integer('max_concurrent_absent'),
+  maxConcurrentPercent: numeric('max_concurrent_percent', { precision: 5, scale: 2 }),
+  blackoutPeriods: jsonb('blackout_periods').notNull().default([]),
+  criticalRoleIds: text('critical_role_ids').array().notNull(),
+  createdAt: createdAt(),
+})
+
+export const documents = pgTable('documents', {
+  id: id(),
+  orgId: orgId(),
+  employeeId: uuid('employee_id').references(() => employees.id, { onDelete: 'cascade' }),
+  type: text('type').notNull().default('other'),
+  name: text('name').notNull(),
+  s3Key: text('s3_key').notNull(),
+  contentType: text('content_type'),
+  sizeBytes: bigint('size_bytes', { mode: 'number' }),
+  uploadedBy: uuid('uploaded_by').references(() => users.id, { onDelete: 'set null' }),
+  uploadedAt: timestamp('uploaded_at', { withTimezone: true }).notNull().defaultNow(),
+  requiresAcknowledgement: boolean('requires_acknowledgement').notNull().default(false),
+  acknowledgedAt: timestamp('acknowledged_at', { withTimezone: true }),
+})
+
+export const idempotencyKeys = pgTable('idempotency_keys', {
+  id: id(),
+  orgId: orgId(),
+  key: text('key').notNull(),
+  endpoint: text('endpoint').notNull(),
+  requestHash: text('request_hash').notNull(),
+  responseStatus: integer('response_status'),
+  responseBody: jsonb('response_body'),
+  createdAt: createdAt(),
+})
+
+export const notifications = pgTable('notifications', {
+  id: id(),
+  orgId: orgId(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  event: text('event').notNull(),
+  title: text('title').notNull(),
+  body: text('body').notNull(),
+  deepLink: text('deep_link'),
+  data: jsonb('data').notNull().default({}),
+  sentAt: timestamp('sent_at', { withTimezone: true }),
+  readAt: timestamp('read_at', { withTimezone: true }),
+  createdAt: createdAt(),
+})
+
+export const auditLog = pgTable('audit_log', {
+  id: id(),
+  orgId: orgId(),
+  actorUserId: uuid('actor_user_id').references(() => users.id, { onDelete: 'set null' }),
+  action: text('action').notNull(),
+  entityType: text('entity_type').notNull(),
+  entityId: uuid('entity_id'),
+  before: jsonb('before'),
+  after: jsonb('after'),
+  ip: text('ip'),
+  createdAt: createdAt(),
+})
+
+export const schema = {
+  organisations,
+  users,
+  locations,
+  departments,
+  workSchedules,
+  employees,
+  magicLinkTokens,
+  refreshTokens,
+  devices,
+  checkinCodes,
+  attendanceRecords,
+  attendanceDisputes,
+  leaveTypes,
+  leaveBalances,
+  leaveBalanceAdjustments,
+  leaveRequests,
+  coverageRules,
+  documents,
+  idempotencyKeys,
+  notifications,
+  auditLog,
+}
