@@ -22,5 +22,16 @@
   },
   "devDependencies": {
     "typescript": "^5.6.3"
+  },
+  "overridesNote": [
+    "React refuses to start when react and react-dom differ by even a patch version,",
+    "and it fails as a blank white page rather than a build error, so it is easy to",
+    "mistake for a broken app. npm was hoisting react 19.2.8 transitively while",
+    "expo install pinned react-dom to 19.2.3. Pinning both keeps one copy in the tree.",
+    "Keep these in step with the versions the installed Expo SDK bundles."
+  ],
+  "overrides": {
+    "react": "19.2.3",
+    "react-dom": "19.2.3"
   }
 }

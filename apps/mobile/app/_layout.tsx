@@ -17,6 +17,8 @@ import { persistQueryClient } from '@tanstack/react-query-persist-client'
 
 import { kv } from '../src/lib/kv'
 import { TabBar } from '../src/ui/TabBar'
+import { AppHeader } from '../src/ui/AppHeader'
+import { Splash } from '../src/ui/Splash'
 import { BiometricGate } from '../src/ui/BiometricGate'
 import { SyncBanner } from '../src/ui/SyncBanner'
 import { colour } from '../src/ui/theme'
@@ -97,13 +99,15 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
-        <StatusBar style="dark" />
+        <StatusBar style="light" />
         <View style={styles.root}>
+          {status === 'authenticated' ? <AppHeader /> : null}
           <Stack
             screenOptions={{
               headerShown: false,
               contentStyle: { backgroundColor: colour.bg },
               animation: 'fade',
+              animationDuration: 180,
             }}
           />
           {status === 'authenticated' ? (
@@ -114,6 +118,9 @@ export default function RootLayout() {
           ) : null}
         </View>
         <BiometricGate />
+        {/* Held above everything until the session has been restored, so the
+            first painted frame is real content rather than an empty shell. */}
+        <Splash visible={!bootstrapped} />
       </QueryClientProvider>
     </SafeAreaProvider>
   )
