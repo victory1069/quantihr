@@ -11,6 +11,7 @@
     "node": ">=20"
   },
   "scripts": {
+    "postinstall": "node scripts/patch-rn-polyfills.cjs",
     "build": "npm run build --workspace @quanti/shared",
     "test": "npm run test --workspaces --if-present",
     "typecheck": "npm run typecheck --workspaces --if-present",

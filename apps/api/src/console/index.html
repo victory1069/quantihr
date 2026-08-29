@@ -1,0 +1,828 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Quanti HR — Console</title>
+<style>
+  :root {
+    --bg: #f8fafc; --surface: #fff; --surface-alt: #f1f5f9;
+    --border: #e2e8f0; --border-strong: #cbd5e1;
+    --text: #0f172a; --muted: #64748b; --faint: #94a3b8;
+    --primary: #1d4ed8; --primary-soft: #eff6ff;
+    --success: #047857; --success-soft: #ecfdf5;
+    --warning: #b45309; --warning-soft: #fffbeb;
+    --danger: #b91c1c; --danger-soft: #fef2f2;
+    --radius: 12px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  a { color: var(--primary); }
+  .hidden { display: none !important; }
+
+  header {
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding: 0 24px; display: flex; align-items: center; gap: 24px;
+    position: sticky; top: 0; z-index: 10;
+  }
+  header h1 { font-size: 17px; margin: 16px 0; font-weight: 700; }
+  header .org { color: var(--muted); font-size: 13px; }
+  header .spacer { flex: 1; }
+  nav { display: flex; gap: 4px; overflow-x: auto; }
+  nav button {
+    background: none; border: 0; padding: 16px 12px; cursor: pointer;
+    font: inherit; font-size: 14px; color: var(--muted);
+    border-bottom: 2px solid transparent; white-space: nowrap;
+  }
+  nav button[aria-current="true"] { color: var(--primary); border-bottom-color: var(--primary); font-weight: 600; }
+
+  main { max-width: 1080px; margin: 0 auto; padding: 24px; }
+  section > h2 { font-size: 22px; margin: 0 0 4px; }
+  section > p.lede { color: var(--muted); margin: 0 0 20px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+  }
+  .card h3 { margin: 0 0 12px; font-size: 16px; }
+  .card p.hint { color: var(--muted); font-size: 13px; margin: 4px 0 12px; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: var(--muted); margin-bottom: 4px; }
+  input, select, textarea {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--border-strong);
+    border-radius: 8px; font: inherit; background: var(--surface); color: var(--text);
+  }
+  input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
+  textarea { min-height: 90px; resize: vertical; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
+
+  button.btn {
+    padding: 10px 16px; border-radius: 8px; border: 1px solid transparent;
+    font: inherit; font-weight: 600; cursor: pointer; background: var(--primary); color: #fff;
+  }
+  button.btn.secondary { background: var(--primary-soft); color: var(--primary); border-color: var(--primary); }
+  button.btn.ghost { background: transparent; color: var(--primary); }
+  button.btn.danger { background: var(--danger); color: #fff; }
+  button.btn:disabled { opacity: .5; cursor: not-allowed; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  tbody tr:hover { background: var(--surface-alt); }
+  .table-wrap { overflow-x: auto; }
+
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
+  .pill.ok { background: var(--success-soft); color: var(--success); }
+  .pill.warn { background: var(--warning-soft); color: var(--warning); }
+  .pill.bad { background: var(--danger-soft); color: var(--danger); }
+  .pill.neutral { background: var(--surface-alt); color: var(--muted); }
+
+  .notice { padding: 12px 14px; border-radius: 8px; margin: 12px 0; font-size: 14px; border: 1px solid; }
+  .notice.info { background: var(--primary-soft); border-color: #bfdbfe; color: #1e40af; }
+  .notice.ok { background: var(--success-soft); border-color: #a7f3d0; color: var(--success); }
+  .notice.warn { background: var(--warning-soft); border-color: #fde68a; color: var(--warning); }
+  .notice.bad { background: var(--danger-soft); border-color: #fecaca; color: var(--danger); }
+
+  .code-display {
+    font: 700 56px/1 ui-monospace, Menlo, Consolas, monospace;
+    letter-spacing: 12px; text-align: center; padding: 28px 0 20px;
+    color: var(--text);
+  }
+  .code-meta { text-align: center; color: var(--muted); font-size: 13px; }
+
+  .signin { max-width: 420px; margin: 80px auto; }
+  .muted { color: var(--muted); }
+  .row-between { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .stat { font-size: 26px; font-weight: 700; }
+  .stat-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+</style>
+</head>
+<body>
+
+<!-- Sign in -->
+<div id="signin-view" class="signin">
+  <div class="card">
+    <h1 style="margin:0 0 4px;font-size:22px">Quanti HR Console</h1>
+    <p class="hint">Sign in with your HR admin email. We send a one-time link — there are no passwords.</p>
+    <label for="email">Work email</label>
+    <input id="email" type="email" placeholder="you@company.com" autocomplete="email" />
+    <div class="actions">
+      <button class="btn" id="send-link">Email me a link</button>
+    </div>
+    <div id="signin-msg"></div>
+  </div>
+</div>
+
+<!-- App -->
+<div id="app-view" class="hidden">
+  <header>
+    <h1>Quanti HR</h1>
+    <span class="org" id="org-name"></span>
+    <nav id="nav"></nav>
+    <span class="spacer"></span>
+    <button class="btn ghost" id="sign-out">Sign out</button>
+  </header>
+  <main id="main"></main>
+</div>
+
+<script type="module">
+// ---------------------------------------------------------------------------
+// The console is intentionally dependency-free and served by the API itself.
+// Spec §13 leaves the console framework open and warns that a second build
+// surface costs maintenance from month one; this defers that decision without
+// blocking increment 9. The trade-off is that it cannot import the shared Zod
+// schemas, so the API remains the only validator — which is why every handler
+// re-validates rather than trusting this page.
+// ---------------------------------------------------------------------------
+
+const API = location.origin
+const store = {
+  get access() { return sessionStorage.getItem('qh.access') },
+  set access(v) { v ? sessionStorage.setItem('qh.access', v) : sessionStorage.removeItem('qh.access') },
+  get refresh() { return localStorage.getItem('qh.refresh') },
+  set refresh(v) { v ? localStorage.setItem('qh.refresh', v) : localStorage.removeItem('qh.refresh') },
+}
+
+async function req(path, { method = 'GET', body, retry = true } = {}) {
+  const headers = { accept: 'application/json' }
+  if (store.access) headers.authorization = `Bearer ${store.access}`
+  if (body !== undefined) headers['content-type'] = 'application/json'
+
+  const res = await fetch(API + path, {
+    method, headers, body: body === undefined ? undefined : JSON.stringify(body),
+  })
+
+  if (res.status === 401 && retry && store.refresh) {
+    const ok = await refreshSession()
+    if (ok) return req(path, { method, body, retry: false })
+  }
+
+  if (res.status === 204) return null
+  const text = await res.text()
+  const payload = text ? JSON.parse(text) : null
+  if (!res.ok) throw Object.assign(new Error(payload?.message ?? res.statusText), { body: payload })
+  return payload
+}
+
+async function refreshSession() {
+  try {
+    const res = await fetch(`${API}/v1/auth/refresh`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ refreshToken: store.refresh }),
+    })
+    if (!res.ok) { store.access = null; store.refresh = null; return false }
+    const s = await res.json()
+    store.access = s.accessToken; store.refresh = s.refreshToken
+    return true
+  } catch { return false }
+}
+
+const el = (html) => { const t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstElementChild }
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+const $ = (sel, root = document) => root.querySelector(sel)
+
+function notice(kind, message) { return `<div class="notice ${kind}">${esc(message)}</div>` }
+
+// --- Sign in ---------------------------------------------------------------
+
+$('#send-link').addEventListener('click', async () => {
+  const email = $('#email').value.trim()
+  const box = $('#signin-msg')
+  if (!email) return
+  box.innerHTML = ''
+  try {
+    const r = await req('/v1/auth/magic-link', { method: 'POST', body: { email } })
+    box.innerHTML = notice('info', r.message)
+    if (r.devLink) {
+      const token = new URL(r.devLink).searchParams.get('token')
+      const b = el(`<button class="btn secondary" style="margin-top:8px">Open the link (development)</button>`)
+      b.addEventListener('click', () => verify(token))
+      box.appendChild(b)
+    }
+  } catch (e) { box.innerHTML = notice('bad', e.message) }
+})
+
+async function verify(token) {
+  try {
+    const s = await req('/v1/auth/verify', {
+      method: 'POST',
+      body: { token, deviceId: deviceId(), deviceName: 'HR Console', platform: 'web' },
+    })
+    store.access = s.accessToken; store.refresh = s.refreshToken
+    await boot()
+  } catch (e) { $('#signin-msg').innerHTML = notice('bad', e.message) }
+}
+
+function deviceId() {
+  let id = localStorage.getItem('qh.device')
+  if (!id) { id = 'console-' + (crypto.randomUUID?.() ?? Math.random().toString(16).slice(2)); localStorage.setItem('qh.device', id) }
+  return id
+}
+
+$('#sign-out').addEventListener('click', () => {
+  store.access = null; store.refresh = null; location.reload()
+})
+
+// --- Shell -----------------------------------------------------------------
+
+const TABS = [
+  { id: 'overview',   label: 'Overview' },
+  { id: 'employees',  label: 'Employees' },
+  { id: 'import',     label: 'Bulk import' },
+  { id: 'leave',      label: 'Leave types' },
+  { id: 'locations',  label: 'Locations' },
+  { id: 'coverage',   label: 'Coverage' },
+  { id: 'documents',  label: 'Documents' },
+  { id: 'devices',    label: 'Devices' },
+  { id: 'code',       label: 'Check-in code' },
+  { id: 'settings',   label: 'Settings' },
+]
+
+let state = { org: null, me: null, employees: [], departments: [], locations: [], leaveTypes: [], schedules: [] }
+
+async function boot() {
+  const params = new URLSearchParams(location.search)
+  const token = params.get('token')
+  if (token) { history.replaceState({}, '', location.pathname); return verify(token) }
+
+  if (!store.access && store.refresh) await refreshSession()
+  if (!store.access) { $('#signin-view').classList.remove('hidden'); $('#app-view').classList.add('hidden'); return }
+
+  try {
+    state.me = await req('/v1/me')
+  } catch { $('#signin-view').classList.remove('hidden'); return }
+
+  const roles = state.me.roles ?? []
+  if (!roles.includes('hr_admin') && !roles.includes('owner')) {
+    $('#signin-view').classList.remove('hidden')
+    $('#signin-msg').innerHTML = notice('bad', 'That account is not an HR administrator. The console is limited to HR roles.')
+    store.access = null; store.refresh = null
+    return
+  }
+
+  $('#signin-view').classList.add('hidden')
+  $('#app-view').classList.remove('hidden')
+  $('#org-name').textContent = state.me.config.org.name
+
+  const nav = $('#nav'); nav.innerHTML = ''
+  for (const tab of TABS) {
+    const b = el(`<button data-tab="${tab.id}">${tab.label}</button>`)
+    b.addEventListener('click', () => show(tab.id))
+    nav.appendChild(b)
+  }
+  await show('overview')
+}
+
+async function show(tabId) {
+  for (const b of $('#nav').children) b.setAttribute('aria-current', String(b.dataset.tab === tabId))
+  const main = $('#main')
+  main.innerHTML = '<p class="muted">Loading…</p>'
+  try { main.innerHTML = ''; main.appendChild(await VIEWS[tabId]()) }
+  catch (e) { main.innerHTML = notice('bad', e.message) }
+}
+
+async function refreshReference() {
+  const [emps, depts, locs, types, scheds] = await Promise.all([
+    req('/v1/admin/employees'), req('/v1/admin/departments'),
+    req('/v1/admin/locations'), req('/v1/admin/leave-types'), req('/v1/admin/schedules'),
+  ])
+  state.employees = emps.employees; state.departments = depts.departments
+  state.locations = locs.locations; state.leaveTypes = types.types; state.schedules = scheds.schedules
+}
+
+// --- Views -----------------------------------------------------------------
+
+const VIEWS = {}
+
+VIEWS.overview = async () => {
+  await refreshReference()
+  const pendingDevices = await req('/v1/admin/devices/pending')
+  const active = state.employees.filter((e) => e.status === 'active').length
+
+  return el(`<section>
+    <h2>Overview</h2>
+    <p class="lede">${esc(state.me.config.org.name)} · ${esc(state.me.config.org.timezone)}</p>
+    <div class="grid">
+      <div class="card"><div class="stat">${active}</div><div class="stat-label">Active employees</div></div>
+      <div class="card"><div class="stat">${state.locations.length}</div><div class="stat-label">Locations</div></div>
+      <div class="card"><div class="stat">${state.leaveTypes.length}</div><div class="stat-label">Leave types</div></div>
+      <div class="card"><div class="stat">${pendingDevices.devices.length}</div><div class="stat-label">Devices awaiting approval</div></div>
+    </div>
+    ${state.locations.length === 0 ? notice('warn', 'No locations yet. Add one under Locations before anyone can check in.') : ''}
+    ${state.leaveTypes.length === 0 ? notice('warn', 'No leave types yet. Add at least one so employees can request leave.') : ''}
+  </section>`)
+}
+
+VIEWS.employees = async () => {
+  await refreshReference()
+  const deptName = (id) => state.departments.find((d) => d.id === id)?.name ?? '—'
+  const empName = (id) => { const e = state.employees.find((x) => x.id === id); return e ? `${e.firstName} ${e.lastName}` : '—' }
+
+  const section = el(`<section>
+    <h2>Employees</h2>
+    <p class="lede">${state.employees.length} record(s). Adding an employee also creates their sign-in account.</p>
+
+    <div class="card">
+      <h3>Add or update an employee</h3>
+      <p class="hint">Matching an existing employee number updates that record instead of creating a duplicate.</p>
+      <div class="grid">
+        <div><label>Employee number</label><input id="f-num" placeholder="QH-009" /></div>
+        <div><label>First name</label><input id="f-first" /></div>
+        <div><label>Last name</label><input id="f-last" /></div>
+        <div><label>Email</label><input id="f-email" type="email" /></div>
+        <div><label>Job title</label><input id="f-title" /></div>
+        <div><label>Start date</label><input id="f-start" type="date" /></div>
+        <div><label>Department</label><select id="f-dept"><option value="">—</option>${state.departments.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('')}</select></div>
+        <div><label>Location</label><select id="f-loc"><option value="">—</option>${state.locations.map((l) => `<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></div>
+        <div><label>Manager</label><select id="f-mgr"><option value="">—</option>${state.employees.map((e) => `<option value="${e.id}">${esc(e.firstName + ' ' + e.lastName)}</option>`).join('')}</select></div>
+        <div><label>Schedule</label><select id="f-sched">${state.schedules.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></div>
+        <div><label>Employment type</label><select id="f-type"><option value="full_time">Full time</option><option value="part_time">Part time</option><option value="contract">Contract</option><option value="intern">Intern</option></select></div>
+        <div><label>Roles</label><select id="f-roles" multiple size="4"><option value="employee" selected>employee</option><option value="manager">manager</option><option value="hr_admin">hr_admin</option><option value="owner">owner</option></select></div>
+      </div>
+      <div class="actions"><button class="btn" id="save-emp">Save employee</button></div>
+      <div id="emp-msg"></div>
+    </div>
+
+    <div class="card">
+      <h3>Directory</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Name</th><th>Title</th><th>Department</th><th>Manager</th><th>Started</th><th>Status</th></tr></thead>
+        <tbody>${state.employees.map((e) => `<tr>
+          <td>${esc(e.employeeNumber)}</td>
+          <td>${esc(e.firstName)} ${esc(e.lastName)}<div class="muted" style="font-size:12px">${esc(e.email)}</div></td>
+          <td>${esc(e.jobTitle ?? '—')}</td>
+          <td>${esc(deptName(e.departmentId))}</td>
+          <td>${esc(empName(e.managerId))}</td>
+          <td>${esc(e.startDate)}</td>
+          <td><span class="pill ${e.status === 'active' ? 'ok' : 'neutral'}">${esc(e.status)}</span></td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+    </div>
+  </section>`)
+
+  $('#save-emp', section).addEventListener('click', async () => {
+    const roles = [...$('#f-roles', section).selectedOptions].map((o) => o.value)
+    const body = {
+      employeeNumber: $('#f-num', section).value.trim(),
+      firstName: $('#f-first', section).value.trim(),
+      lastName: $('#f-last', section).value.trim(),
+      email: $('#f-email', section).value.trim(),
+      jobTitle: $('#f-title', section).value.trim() || null,
+      startDate: $('#f-start', section).value,
+      departmentId: $('#f-dept', section).value || null,
+      locationId: $('#f-loc', section).value || null,
+      managerId: $('#f-mgr', section).value || null,
+      workScheduleId: $('#f-sched', section).value || null,
+      employmentType: $('#f-type', section).value,
+      status: 'active',
+      roles: roles.length ? roles : ['employee'],
+    }
+    try {
+      await req('/v1/admin/employees', { method: 'POST', body })
+      await show('employees')
+    } catch (e) {
+      $('#emp-msg', section).innerHTML = notice('bad', formatError(e))
+    }
+  })
+
+  return section
+}
+
+VIEWS.import = async () => {
+  const section = el(`<section>
+    <h2>Bulk import</h2>
+    <p class="lede">Paste CSV. Nothing is written until you have reviewed the preview and pressed Import.</p>
+    <div class="card">
+      <h3>CSV</h3>
+      <p class="hint">Required columns: employee_number, first_name, last_name, email, start_date. Optional: phone, job_title, band, role_id, employment_type, end_date.</p>
+      <textarea id="csv" spellcheck="false">employee_number,first_name,last_name,email,start_date,job_title
+QH-101,Ada,Lovelace,ada@kanjufoods.test,2026-01-15,Analyst
+QH-102,Grace,Hopper,grace@kanjufoods.test,2026-02-01,Engineer</textarea>
+      <div class="actions">
+        <button class="btn secondary" id="validate">Validate</button>
+        <button class="btn" id="commit" disabled>Import</button>
+      </div>
+      <div id="import-msg"></div>
+    </div>
+  </section>`)
+
+  let lastRows = null
+
+  const parse = () => {
+    const text = $('#csv', section).value.trim()
+    const [header, ...lines] = text.split(/\r?\n/).filter(Boolean)
+    if (!header) throw new Error('Paste a CSV with a header row.')
+    const cols = header.split(',').map((c) => c.trim())
+    return lines.map((line) => {
+      const cells = line.split(',')
+      return Object.fromEntries(cols.map((c, i) => [c, (cells[i] ?? '').trim()]))
+    })
+  }
+
+  const render = (result) => {
+    const bad = result.rows.filter((r) => r.action === 'error')
+    $('#import-msg', section).innerHTML = `
+      ${result.committed ? notice('ok', `Imported ${result.willCreate} new and ${result.willUpdate} updated record(s).`) : ''}
+      ${!result.committed && result.errorCount === 0 ? notice('info', `Ready: ${result.willCreate} to create, ${result.willUpdate} to update. Nothing written yet.`) : ''}
+      ${result.errorCount > 0 ? notice('bad', `${result.errorCount} row(s) have errors. Fix them before importing — nothing is written while any row fails.`) : ''}
+      <div class="table-wrap"><table>
+        <thead><tr><th>Row</th><th>Number</th><th>Name</th><th>Action</th><th>Problems</th></tr></thead>
+        <tbody>${result.rows.map((r) => `<tr>
+          <td>${r.rowNumber}</td><td>${esc(r.employeeNumber ?? '—')}</td><td>${esc(r.name ?? '—')}</td>
+          <td><span class="pill ${r.action === 'error' ? 'bad' : r.action === 'create' ? 'ok' : 'neutral'}">${r.action}</span></td>
+          <td>${r.errors.map((x) => `${esc(x.field)}: ${esc(x.message)}`).join('<br>') || '—'}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>`
+    $('#commit', section).disabled = result.errorCount > 0 || result.committed
+  }
+
+  $('#validate', section).addEventListener('click', async () => {
+    try {
+      lastRows = parse()
+      render(await req('/v1/admin/employees/import', { method: 'POST', body: { mode: 'validate', rows: lastRows } }))
+    } catch (e) { $('#import-msg', section).innerHTML = notice('bad', formatError(e)) }
+  })
+
+  $('#commit', section).addEventListener('click', async () => {
+    if (!lastRows) return
+    try {
+      render(await req('/v1/admin/employees/import', { method: 'POST', body: { mode: 'commit', rows: lastRows } }))
+    } catch (e) { $('#import-msg', section).innerHTML = notice('bad', formatError(e)) }
+  })
+
+  return section
+}
+
+VIEWS.leave = async () => {
+  await refreshReference()
+  const section = el(`<section>
+    <h2>Leave types</h2>
+    <p class="lede">Accrual method and carryover rules. Changes apply from the next nightly accrual run.</p>
+
+    <div class="card">
+      <h3>Add a leave type</h3>
+      <div class="grid">
+        <div><label>Name</label><input id="lt-name" placeholder="Annual Leave" /></div>
+        <div><label>Accrual method</label><select id="lt-method">
+          <option value="annual_fixed">Annual grant, fixed date</option>
+          <option value="annual_anniversary">Annual grant, employment anniversary</option>
+          <option value="monthly">Monthly accrual</option>
+        </select></div>
+        <div><label>Rate <span class="muted" id="lt-rate-hint">(days per year)</span></label><input id="lt-rate" type="number" step="0.5" value="20" /></div>
+        <div><label>Max balance</label><input id="lt-max" type="number" step="0.5" placeholder="blank = none" /></div>
+        <div><label>Carryover cap</label><input id="lt-cap" type="number" step="0.5" placeholder="blank = unlimited" /></div>
+        <div><label>Carryover expires after (months)</label><input id="lt-exp" type="number" placeholder="blank = never" /></div>
+        <div><label>Minimum notice (days)</label><input id="lt-notice" type="number" placeholder="blank = none" /></div>
+        <div><label>Colour</label><input id="lt-colour" type="color" value="#2563eb" /></div>
+        <div><label><input type="checkbox" id="lt-doc" style="width:auto" /> Requires a document</label></div>
+        <div><label><input type="checkbox" id="lt-paid" style="width:auto" checked /> Paid</label></div>
+      </div>
+      <div class="actions"><button class="btn" id="save-lt">Save leave type</button></div>
+      <div id="lt-msg"></div>
+    </div>
+
+    <div class="card">
+      <h3>Configured</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>Method</th><th>Rate</th><th>Carryover</th><th>Notice</th><th>Document</th></tr></thead>
+        <tbody>${state.leaveTypes.map((t) => `<tr>
+          <td><span class="pill neutral" style="background:${esc(t.colour)}22;color:${esc(t.colour)}">${esc(t.name)}</span></td>
+          <td>${esc(t.accrualMethod.replace(/_/g, ' '))}</td>
+          <td>${t.accrualRate} ${t.accrualMethod === 'monthly' ? '/mo' : '/yr'}</td>
+          <td>${t.carryoverCap === null ? 'unlimited' : t.carryoverCap}${t.carryoverExpiryMonths ? `, expires in ${t.carryoverExpiryMonths}mo` : ''}</td>
+          <td>${t.minNoticeDays ?? '—'}</td>
+          <td>${t.requiresDocument ? 'yes' : 'no'}</td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+    </div>
+  </section>`)
+
+  const methodEl = $('#lt-method', section)
+  methodEl.addEventListener('change', () => {
+    $('#lt-rate-hint', section).textContent =
+      methodEl.value === 'monthly' ? '(days per month)' : '(days per year)'
+  })
+
+  $('#save-lt', section).addEventListener('click', async () => {
+    const numOrNull = (sel) => { const v = $(sel, section).value.trim(); return v === '' ? null : Number(v) }
+    const body = {
+      name: $('#lt-name', section).value.trim(),
+      accrualMethod: methodEl.value,
+      accrualRate: Number($('#lt-rate', section).value),
+      maxBalance: numOrNull('#lt-max'),
+      carryoverCap: numOrNull('#lt-cap'),
+      carryoverExpiryMonths: numOrNull('#lt-exp'),
+      minNoticeDays: numOrNull('#lt-notice'),
+      requiresDocument: $('#lt-doc', section).checked,
+      isPaid: $('#lt-paid', section).checked,
+      colour: $('#lt-colour', section).value,
+    }
+    try { await req('/v1/admin/leave-types', { method: 'POST', body }); await show('leave') }
+    catch (e) { $('#lt-msg', section).innerHTML = notice('bad', formatError(e)) }
+  })
+
+  return section
+}
+
+VIEWS.locations = async () => {
+  await refreshReference()
+  const section = el(`<section>
+    <h2>Locations</h2>
+    <p class="lede">The geofence centre and radius used to validate check-ins.</p>
+
+    <div class="card">
+      <h3>Add a location</h3>
+      <p class="hint">A radius under about 50m will reject honest check-ins on a poor GPS fix. 100–200m suits most offices.</p>
+      <div class="grid">
+        <div><label>Name</label><input id="loc-name" placeholder="Victoria Island HQ" /></div>
+        <div><label>Address</label><input id="loc-addr" /></div>
+        <div><label>Latitude</label><input id="loc-lat" type="number" step="any" placeholder="6.4281" /></div>
+        <div><label>Longitude</label><input id="loc-lng" type="number" step="any" placeholder="3.4219" /></div>
+        <div><label>Geofence radius (m)</label><input id="loc-rad" type="number" value="150" /></div>
+      </div>
+      <div class="actions">
+        <button class="btn secondary" id="loc-here">Use my current location</button>
+        <button class="btn" id="save-loc">Save location</button>
+      </div>
+      <div id="loc-msg"></div>
+    </div>
+
+    <div class="card">
+      <h3>Configured</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Name</th><th>Address</th><th>Coordinates</th><th>Radius</th></tr></thead>
+        <tbody>${state.locations.map((l) => `<tr>
+          <td>${esc(l.name)}</td><td>${esc(l.address ?? '—')}</td>
+          <td>${l.latitude.toFixed(5)}, ${l.longitude.toFixed(5)}</td><td>${l.geofenceRadiusM} m</td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+    </div>
+  </section>`)
+
+  $('#loc-here', section).addEventListener('click', () => {
+    navigator.geolocation?.getCurrentPosition(
+      (p) => {
+        $('#loc-lat', section).value = p.coords.latitude.toFixed(6)
+        $('#loc-lng', section).value = p.coords.longitude.toFixed(6)
+        $('#loc-msg', section).innerHTML = notice('info', `Filled from your browser (±${Math.round(p.coords.accuracy)}m).`)
+      },
+      () => { $('#loc-msg', section).innerHTML = notice('warn', 'Could not read your location. Enter the coordinates manually.') },
+    )
+  })
+
+  $('#save-loc', section).addEventListener('click', async () => {
+    const body = {
+      name: $('#loc-name', section).value.trim(),
+      address: $('#loc-addr', section).value.trim() || undefined,
+      latitude: Number($('#loc-lat', section).value),
+      longitude: Number($('#loc-lng', section).value),
+      geofenceRadiusM: Number($('#loc-rad', section).value),
+    }
+    try { await req('/v1/admin/locations', { method: 'POST', body }); await show('locations') }
+    catch (e) { $('#loc-msg', section).innerHTML = notice('bad', formatError(e)) }
+  })
+
+  return section
+}
+
+VIEWS.coverage = async () => {
+  await refreshReference()
+  const existing = await req('/v1/admin/coverage-rules')
+  const deptName = (id) => state.departments.find((d) => d.id === id)?.name ?? id
+
+  const section = el(`<section>
+    <h2>Coverage rules</h2>
+    <p class="lede">Managers can approve against these, but the API requires a written reason when they do.</p>
+
+    <div class="card">
+      <h3>Set a rule</h3>
+      <div class="grid">
+        <div><label>Department</label><select id="cv-dept">${state.departments.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('')}</select></div>
+        <div><label>Max people away at once</label><input id="cv-max" type="number" placeholder="blank = no limit" /></div>
+        <div><label>Max percent away</label><input id="cv-pct" type="number" placeholder="blank = no limit" /></div>
+        <div><label>Critical roles (comma separated)</label><input id="cv-roles" placeholder="supervisor, pharmacist" /></div>
+      </div>
+      <label style="margin-top:12px">Blackout periods (one per line: name, start, end)</label>
+      <textarea id="cv-black" placeholder="Year-end stock count, 2026-12-18, 2026-12-31"></textarea>
+      <div class="actions"><button class="btn" id="save-cv">Save rule</button></div>
+      <div id="cv-msg"></div>
+    </div>
+
+    <div class="card">
+      <h3>Current</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Department</th><th>Max away</th><th>Max %</th><th>Critical roles</th><th>Blackouts</th></tr></thead>
+        <tbody>${existing.rules.map((r) => `<tr>
+          <td>${esc(deptName(r.departmentId))}</td>
+          <td>${r.maxConcurrentAbsent ?? '—'}</td>
+          <td>${r.maxConcurrentPercent ?? '—'}</td>
+          <td>${(r.criticalRoleIds ?? []).join(', ') || '—'}</td>
+          <td>${(r.blackoutPeriods ?? []).map((b) => `${esc(b.name)} (${b.start}→${b.end})`).join('<br>') || '—'}</td>
+        </tr>`).join('') || '<tr><td colspan="5" class="muted">No coverage rules yet.</td></tr>'}</tbody>
+      </table></div>
+    </div>
+  </section>`)
+
+  $('#save-cv', section).addEventListener('click', async () => {
+    const blackoutPeriods = $('#cv-black', section).value.split(/\r?\n/).filter(Boolean).map((line) => {
+      const [name, start, end] = line.split(',').map((s) => s.trim())
+      return { name, start, end }
+    })
+    const numOrNull = (sel) => { const v = $(sel, section).value.trim(); return v === '' ? null : Number(v) }
+    const body = {
+      departmentId: $('#cv-dept', section).value,
+      maxConcurrentAbsent: numOrNull('#cv-max'),
+      maxConcurrentPercent: numOrNull('#cv-pct'),
+      criticalRoleIds: $('#cv-roles', section).value.split(',').map((s) => s.trim()).filter(Boolean),
+      blackoutPeriods,
+    }
+    try { await req('/v1/admin/coverage-rules', { method: 'POST', body }); await show('coverage') }
+    catch (e) { $('#cv-msg', section).innerHTML = notice('bad', formatError(e)) }
+  })
+
+  return section
+}
+
+VIEWS.documents = async () => {
+  await refreshReference()
+  const section = el(`<section>
+    <h2>Documents</h2>
+    <p class="lede">Uploads are read-only for employees. Leave the employee blank to publish to everyone.</p>
+    <div class="card">
+      <h3>Upload</h3>
+      <div class="grid">
+        <div><label>Employee</label><select id="doc-emp"><option value="">Everyone (org-wide)</option>${state.employees.map((e) => `<option value="${e.id}">${esc(e.firstName + ' ' + e.lastName)}</option>`).join('')}</select></div>
+        <div><label>Type</label><select id="doc-type"><option value="contract">Contract</option><option value="policy">Policy</option><option value="letter">Letter</option><option value="certificate">Certificate</option><option value="other">Other</option></select></div>
+        <div><label>File</label><input id="doc-file" type="file" /></div>
+        <div><label><input type="checkbox" id="doc-ack" style="width:auto" /> Requires acknowledgement</label></div>
+      </div>
+      <div class="actions"><button class="btn" id="save-doc">Upload</button></div>
+      <div id="doc-msg"></div>
+    </div>
+  </section>`)
+
+  $('#save-doc', section).addEventListener('click', async () => {
+    const file = $('#doc-file', section).files?.[0]
+    const box = $('#doc-msg', section)
+    if (!file) { box.innerHTML = notice('warn', 'Choose a file first.'); return }
+    if (file.size > 20_000_000) { box.innerHTML = notice('bad', 'That file is larger than 20MB.'); return }
+
+    const content = await new Promise((resolve, reject) => {
+      const r = new FileReader()
+      r.onload = () => resolve(String(r.result).split(',')[1])
+      r.onerror = reject
+      r.readAsDataURL(file)
+    })
+
+    try {
+      await req('/v1/admin/documents', { method: 'POST', body: {
+        employeeId: $('#doc-emp', section).value || null,
+        type: $('#doc-type', section).value,
+        name: file.name,
+        contentType: file.type || 'application/octet-stream',
+        content,
+        requiresAcknowledgement: $('#doc-ack', section).checked,
+      }})
+      box.innerHTML = notice('ok', `Uploaded ${esc(file.name)}.`)
+      $('#doc-file', section).value = ''
+    } catch (e) { box.innerHTML = notice('bad', formatError(e)) }
+  })
+
+  return section
+}
+
+VIEWS.devices = async () => {
+  const pending = await req('/v1/admin/devices/pending')
+  const section = el(`<section>
+    <h2>Device approvals</h2>
+    <p class="lede">Check-ins are tied to one registered device per employee. Approving a new one retires the old.</p>
+    <div class="card">
+      ${pending.devices.length === 0 ? '<p class="muted">Nothing waiting.</p>' : `
+      <div class="table-wrap"><table>
+        <thead><tr><th>Employee</th><th>Platform</th><th>Requested</th><th></th></tr></thead>
+        <tbody>${pending.devices.map((d) => `<tr>
+          <td>${esc(d.employeeName)}</td>
+          <td>${esc(d.platform)}${d.name ? ` · ${esc(d.name)}` : ''}</td>
+          <td>${d.requestedAt ? new Date(d.requestedAt).toLocaleString() : '—'}</td>
+          <td><button class="btn secondary approve" data-emp="${d.employeeId}" data-dev="${esc(d.deviceId)}">Approve</button></td>
+        </tr>`).join('')}</tbody>
+      </table></div>`}
+      <div id="dev-msg"></div>
+    </div>
+  </section>`)
+
+  for (const b of section.querySelectorAll('.approve')) {
+    b.addEventListener('click', async () => {
+      try {
+        await req('/v1/admin/devices/approve', { method: 'POST', body: { employeeId: b.dataset.emp, deviceId: b.dataset.dev } })
+        await show('devices')
+      } catch (e) { $('#dev-msg', section).innerHTML = notice('bad', formatError(e)) }
+    })
+  }
+  return section
+}
+
+VIEWS.code = async () => {
+  await refreshReference()
+  const section = el(`<section>
+    <h2>Check-in code</h2>
+    <p class="lede">Show this on a display at the entrance. It rotates automatically.</p>
+    <div class="card">
+      <label>Location</label>
+      <select id="code-loc">${state.locations.map((l) => `<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select>
+      <div class="code-display" id="code-value">••••••</div>
+      <div class="code-meta" id="code-meta"></div>
+      ${notice('warn', 'A screenshot of this code defeats it in seconds. Treat check-in as a deterrent and a record, not proof of presence.')}
+    </div>
+  </section>`)
+
+  let timer = null
+  const load = async () => {
+    const id = $('#code-loc', section).value
+    if (!id) { $('#code-value', section).textContent = '—'; return }
+    try {
+      const r = await req(`/v1/admin/checkin-code/${id}`)
+      $('#code-value', section).textContent = r.code
+      const secs = Math.max(0, Math.round((new Date(r.validUntil) - Date.now()) / 1000))
+      $('#code-meta', section).textContent = `Rotates in ${secs}s · every ${r.rotationMinutes} minute(s)`
+    } catch (e) { $('#code-meta', section).textContent = e.message }
+  }
+
+  $('#code-loc', section).addEventListener('change', load)
+  await load()
+  timer = setInterval(load, 5000)
+  // Stop polling when this view is replaced.
+  new MutationObserver((_m, obs) => {
+    if (!document.contains(section)) { clearInterval(timer); obs.disconnect() }
+  }).observe(document.getElementById('main'), { childList: true })
+
+  return section
+}
+
+VIEWS.settings = async () => {
+  const org = await req('/v1/admin/org')
+  const s = org.settings
+  const section = el(`<section>
+    <h2>Settings</h2>
+    <p class="lede">Org-wide rules. The rounding rule especially — every org has an opinion and they all differ.</p>
+    <div class="card">
+      <div class="grid">
+        <div><label>Organisation name</label><input id="s-name" value="${esc(org.name)}" /></div>
+        <div><label>Timezone</label><input id="s-tz" value="${esc(org.timezone)}" /></div>
+        <div><label>Leave year starts (MM-DD)</label><input id="s-year" value="${esc(s.leaveYearStart)}" /></div>
+        <div><label>Pro-rata rounding</label><select id="s-round">
+          <option value="nearest_half"${s.proRataRounding === 'nearest_half' ? ' selected' : ''}>Nearest half day</option>
+          <option value="up"${s.proRataRounding === 'up' ? ' selected' : ''}>Round up</option>
+          <option value="down"${s.proRataRounding === 'down' ? ' selected' : ''}>Round down</option>
+        </select></div>
+        <div><label>Reject fixes less precise than (m)</label><input id="s-acc" type="number" value="${s.maxAccuracyM}" /></div>
+        <div><label>Code rotation (minutes)</label><input id="s-rot" type="number" value="${s.codeRotationMinutes}" /></div>
+        <div><label>Lateness watch threshold</label><input id="s-late" type="number" value="${s.latenessThreshold}" /></div>
+        <div><label>Warn about expiring leave (days)</label><input id="s-exp" type="number" value="${s.balanceExpiryWarningDays}" /></div>
+      </div>
+      <label style="margin-top:12px">Public holidays (one YYYY-MM-DD per line)</label>
+      <textarea id="s-hol">${(s.publicHolidays ?? []).join('\n')}</textarea>
+      <div class="actions"><button class="btn" id="save-settings">Save settings</button></div>
+      <div id="settings-msg"></div>
+    </div>
+  </section>`)
+
+  $('#save-settings', section).addEventListener('click', async () => {
+    const body = {
+      name: $('#s-name', section).value.trim(),
+      timezone: $('#s-tz', section).value.trim(),
+      settings: {
+        leaveYearStart: $('#s-year', section).value.trim(),
+        proRataRounding: $('#s-round', section).value,
+        maxAccuracyM: Number($('#s-acc', section).value),
+        codeRotationMinutes: Number($('#s-rot', section).value),
+        latenessThreshold: Number($('#s-late', section).value),
+        balanceExpiryWarningDays: Number($('#s-exp', section).value),
+        publicHolidays: $('#s-hol', section).value.split(/\r?\n/).map((x) => x.trim()).filter(Boolean),
+      },
+    }
+    try {
+      await req('/v1/admin/org', { method: 'PATCH', body })
+      $('#settings-msg', section).innerHTML = notice('ok', 'Saved.')
+    } catch (e) { $('#settings-msg', section).innerHTML = notice('bad', formatError(e)) }
+  })
+
+  return section
+}
+
+function formatError(e) {
+  const issues = e.body?.details?.issues
+  if (Array.isArray(issues) && issues.length) {
+    return issues.map((i) => `${i.path}: ${i.message}`).join('; ')
+  }
+  return e.message
+}
+
+boot()
+</script>
+</body>
+</html>

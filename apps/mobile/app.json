@@ -1,0 +1,64 @@
+{
+  "expo": {
+    "name": "Quanti HR",
+    "slug": "quanti-hr",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "quantihr",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0F172A"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.quanti.hr",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Quanti HR confirms you are at your office location when you check in. Location is only read at the moment you tap check in, never in the background.",
+        "NSFaceIDUsageDescription": "Quanti HR uses Face ID to unlock the app and to open your documents."
+      }
+    },
+    "android": {
+      "package": "com.quanti.hr",
+      "adaptiveIcon": {
+        "backgroundColor": "#0F172A"
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "USE_BIOMETRIC"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      "expo-sqlite",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Quanti HR confirms you are at your office when you check in.",
+          "isIosBackgroundLocationEnabled": false,
+          "isAndroidBackgroundLocationEnabled": false
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Quanti HR uses Face ID to unlock the app and your documents."
+        }
+      ],
+      "expo-status-bar"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

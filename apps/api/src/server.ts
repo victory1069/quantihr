@@ -1,3 +1,6 @@
+import { readFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import Fastify, { type FastifyInstance } from 'fastify'
 import cors from '@fastify/cors'
 import type { Database } from './db/client.js'
@@ -39,6 +42,19 @@ export async function buildServer(db: Database): Promise<FastifyInstance> {
     driver: db.driver,
     time: new Date().toISOString(),
   }))
+
+  // The HR console is a static page served by the API itself (spec §13 leaves
+  // the console framework open). It authenticates over the same /v1 endpoints
+  // as the mobile client and holds no privileges of its own.
+  const consoleHtml = await readFile(
+    join(dirname(fileURLToPath(import.meta.url)), 'console/index.html'),
+    'utf8',
+  )
+  const serveConsole = async (_req: unknown, reply: { type: (t: string) => { send: (b: string) => unknown } }) =>
+    reply.type('text/html; charset=utf-8').send(consoleHtml)
+
+  app.get('/console', serveConsole)
+  app.get('/console/', serveConsole)
 
   registerAuthRoutes(app, db)
   registerMeRoutes(app, db)

@@ -55,6 +55,13 @@ const PUBLIC_ROUTES = new Set([
   'POST:/v1/auth/verify',
   'POST:/v1/auth/refresh',
   'GET:/health',
+  // Static console shell. It holds no data — everything it shows is fetched
+  // over the same authenticated /v1 endpoints the mobile client uses.
+  'GET:/console',
+  'GET:/console/',
+  // Development document download: authenticated by the HMAC signature in the
+  // query string, because the browser opens this URL directly with no header.
+  'GET:/v1/documents/download',
 ])
 
 export function registerAuth(app: FastifyInstance, db: Database): void {
