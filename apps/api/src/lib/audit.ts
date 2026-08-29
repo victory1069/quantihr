@@ -30,6 +30,9 @@ export type AuditAction =
   | 'document.acknowledged'
   | 'config.updated'
   | 'auth.logged_in'
+  | 'payroll.run_created'
+  | 'payroll.run_approved'
+  | 'payroll.run_paid'
 
 export interface AuditEntry {
   orgId: string

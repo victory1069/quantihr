@@ -26,6 +26,7 @@ const EMPLOYEE_TABS: Tab[] = [
   { href: '/', label: 'Home', glyph: '⌂', match: (p) => p === '/' },
   { href: '/checkin', label: 'Check in', glyph: '◎', match: (p) => p.startsWith('/checkin') },
   { href: '/leave', label: 'Leave', glyph: '≡', match: (p) => p.startsWith('/leave') },
+  { href: '/payslips', label: 'Pay', glyph: '₦', match: (p) => p.startsWith('/payslips') },
   { href: '/documents', label: 'Docs', glyph: '▤', match: (p) => p.startsWith('/documents') },
   { href: '/profile', label: 'Profile', glyph: '◍', match: (p) => p.startsWith('/profile') },
 ]

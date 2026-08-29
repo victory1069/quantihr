@@ -295,6 +295,79 @@ export const coverageRules = pgTable('coverage_rules', {
   createdAt: createdAt(),
 })
 
+// --- Payroll ---------------------------------------------------------------
+// `bigint({ mode: 'number' })` because every payroll amount is integer kobo and
+// stays well inside Number.MAX_SAFE_INTEGER (₦90 trillion).
+
+export const compensation = pgTable('compensation', {
+  id: id(),
+  orgId: orgId(),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+  effectiveFrom: date('effective_from').notNull(),
+  effectiveTo: date('effective_to'),
+  basic: bigint('basic', { mode: 'number' }).notNull().default(0),
+  housing: bigint('housing', { mode: 'number' }).notNull().default(0),
+  transport: bigint('transport', { mode: 'number' }).notNull().default(0),
+  allowances: jsonb('allowances').notNull().default([]),
+  voluntaryPension: bigint('voluntary_pension', { mode: 'number' }).notNull().default(0),
+  nhis: bigint('nhis', { mode: 'number' }).notNull().default(0),
+  bankName: text('bank_name'),
+  bankAccountNumber: text('bank_account_number'),
+  bankAccountName: text('bank_account_name'),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: createdAt(),
+})
+
+export const employeeLoans = pgTable('employee_loans', {
+  id: id(),
+  orgId: orgId(),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+  kind: text('kind').notNull().default('loan_repayment'),
+  name: text('name').notNull(),
+  principal: bigint('principal', { mode: 'number' }).notNull(),
+  paid: bigint('paid', { mode: 'number' }).notNull().default(0),
+  perPeriod: bigint('per_period', { mode: 'number' }).notNull(),
+  status: text('status').notNull().default('active'),
+  reason: text('reason'),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  createdAt: createdAt(),
+})
+
+export const payrollRuns = pgTable('payroll_runs', {
+  id: id(),
+  orgId: orgId(),
+  periodStart: date('period_start').notNull(),
+  periodEnd: date('period_end').notNull(),
+  payDate: date('pay_date').notNull(),
+  status: text('status').notNull().default('draft'),
+  scheduleId: text('schedule_id').notNull(),
+  totals: jsonb('totals').notNull().default({}),
+  notes: text('notes'),
+  createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+  approvedBy: uuid('approved_by').references(() => users.id, { onDelete: 'set null' }),
+  approvedAt: timestamp('approved_at', { withTimezone: true }),
+  paidAt: timestamp('paid_at', { withTimezone: true }),
+  createdAt: createdAt(),
+})
+
+export const payslips = pgTable('payslips', {
+  id: id(),
+  orgId: orgId(),
+  runId: uuid('run_id').notNull().references(() => payrollRuns.id, { onDelete: 'cascade' }),
+  employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+  gross: bigint('gross', { mode: 'number' }).notNull(),
+  netPay: bigint('net_pay', { mode: 'number' }).notNull(),
+  paye: bigint('paye', { mode: 'number' }).notNull(),
+  pensionEmployee: bigint('pension_employee', { mode: 'number' }).notNull(),
+  pensionEmployer: bigint('pension_employer', { mode: 'number' }).notNull(),
+  nhf: bigint('nhf', { mode: 'number' }).notNull(),
+  nhis: bigint('nhis', { mode: 'number' }).notNull(),
+  nsitf: bigint('nsitf', { mode: 'number' }).notNull(),
+  totalDeductions: bigint('total_deductions', { mode: 'number' }).notNull(),
+  detail: jsonb('detail').notNull(),
+  createdAt: createdAt(),
+})
+
 export const documents = pgTable('documents', {
   id: id(),
   orgId: orgId(),
@@ -366,6 +439,10 @@ export const schema = {
   leaveBalanceAdjustments,
   leaveRequests,
   coverageRules,
+  compensation,
+  employeeLoans,
+  payrollRuns,
+  payslips,
   documents,
   idempotencyKeys,
   notifications,

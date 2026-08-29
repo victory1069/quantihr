@@ -329,6 +329,104 @@ create table if not exists documents (
 create index if not exists documents_employee_idx on documents (org_id, employee_id);
 
 -- ---------------------------------------------------------------------------
+-- Payroll (spec §10)
+-- ---------------------------------------------------------------------------
+--
+-- All money is stored as bigint MINOR UNITS (kobo). Never numeric, never float.
+-- A payroll figure that has been through a float is a figure nobody can
+-- reconcile against a bank file.
+
+-- Compensation is versioned rather than mutated: a payslip issued in March must
+-- still be reproducible after an April raise, and a back-dated correction has to
+-- be visible as a correction.
+create table if not exists compensation (
+  id              uuid primary key default gen_random_uuid(),
+  org_id          uuid not null references organisations(id) on delete cascade,
+  employee_id     uuid not null references employees(id) on delete cascade,
+  effective_from  date not null,
+  effective_to    date,
+  basic           bigint not null default 0,
+  housing         bigint not null default 0,
+  transport       bigint not null default 0,
+  allowances      jsonb not null default '[]'::jsonb,
+  voluntary_pension bigint not null default 0,
+  nhis            bigint not null default 0,
+  bank_name       text,
+  bank_account_number text,
+  bank_account_name   text,
+  created_by      uuid references users(id) on delete set null,
+  created_at      timestamptz not null default now(),
+  unique (org_id, employee_id, effective_from)
+);
+
+create index if not exists compensation_lookup_idx
+  on compensation (org_id, employee_id, effective_from desc);
+
+create table if not exists employee_loans (
+  id          uuid primary key default gen_random_uuid(),
+  org_id      uuid not null references organisations(id) on delete cascade,
+  employee_id uuid not null references employees(id) on delete cascade,
+  kind        text not null default 'loan_repayment',
+  name        text not null,
+  principal   bigint not null,
+  paid        bigint not null default 0,
+  per_period  bigint not null,
+  status      text not null default 'active',
+  reason      text,
+  created_by  uuid references users(id) on delete set null,
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists employee_loans_active_idx
+  on employee_loans (org_id, employee_id, status);
+
+-- A run moves draft → pending_approval → approved → paid. Nothing is payable
+-- until a named human approves it (spec §10, §3 "no automated decisions").
+create table if not exists payroll_runs (
+  id            uuid primary key default gen_random_uuid(),
+  org_id        uuid not null references organisations(id) on delete cascade,
+  period_start  date not null,
+  period_end    date not null,
+  pay_date      date not null,
+  status        text not null default 'draft',
+  -- Which statutory schedule produced these figures. Recorded so a later rate
+  -- correction can identify exactly which runs are affected.
+  schedule_id   text not null,
+  totals        jsonb not null default '{}'::jsonb,
+  notes         text,
+  created_by    uuid references users(id) on delete set null,
+  approved_by   uuid references users(id) on delete set null,
+  approved_at   timestamptz,
+  paid_at       timestamptz,
+  created_at    timestamptz not null default now(),
+  unique (org_id, period_start, period_end, pay_date)
+);
+
+create table if not exists payslips (
+  id                uuid primary key default gen_random_uuid(),
+  org_id            uuid not null references organisations(id) on delete cascade,
+  run_id            uuid not null references payroll_runs(id) on delete cascade,
+  employee_id       uuid not null references employees(id) on delete cascade,
+  gross             bigint not null,
+  net_pay           bigint not null,
+  paye              bigint not null,
+  pension_employee  bigint not null,
+  pension_employer  bigint not null,
+  nhf               bigint not null,
+  nhis              bigint not null,
+  nsitf             bigint not null,
+  total_deductions  bigint not null,
+  -- The full engine output, so a payslip can be re-rendered and explained
+  -- without recomputing against rates that may since have changed.
+  detail            jsonb not null,
+  created_at        timestamptz not null default now(),
+  unique (org_id, run_id, employee_id)
+);
+
+create index if not exists payslips_employee_idx
+  on payslips (org_id, employee_id, created_at desc);
+
+-- ---------------------------------------------------------------------------
 -- Infrastructure
 -- ---------------------------------------------------------------------------
 
@@ -393,6 +491,7 @@ declare
     'checkin_codes', 'attendance_records', 'attendance_disputes',
     'leave_types', 'leave_balances', 'leave_balance_adjustments',
     'leave_requests', 'coverage_rules',
+    'compensation', 'employee_loans', 'payroll_runs', 'payslips',
     'documents', 'idempotency_keys', 'notifications', 'audit_log'
   ];
 begin

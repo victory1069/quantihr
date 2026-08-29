@@ -234,6 +234,7 @@ const TABS = [
   { id: 'employees',  label: 'Employees' },
   { id: 'import',     label: 'Bulk import' },
   { id: 'leave',      label: 'Leave types' },
+  { id: 'payroll',    label: 'Payroll' },
   { id: 'locations',  label: 'Locations' },
   { id: 'coverage',   label: 'Coverage' },
   { id: 'documents',  label: 'Documents' },
@@ -524,6 +525,265 @@ VIEWS.leave = async () => {
     try { await req('/v1/admin/leave-types', { method: 'POST', body }); await show('leave') }
     catch (e) { $('#lt-msg', section).innerHTML = notice('bad', formatError(e)) }
   })
+
+  return section
+}
+
+const kobo = (naira) => Math.round(Number(naira || 0) * 100)
+const money = (k) => '₦' + (Number(k || 0) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+VIEWS.payroll = async () => {
+  await refreshReference()
+  const [config, runs, comps, loans] = await Promise.all([
+    req('/v1/admin/payroll/settings'),
+    req('/v1/admin/payroll/runs'),
+    req('/v1/admin/payroll/compensation'),
+    req('/v1/admin/payroll/loans'),
+  ])
+
+  const s = config.settings
+  const confirmed = !!s.ratesConfirmedAt
+
+  const section = el(`<section>
+    <h2>Payroll</h2>
+    <p class="lede">Compute, preview, approve. Nothing is payable until a second person approves it.</p>
+
+    ${confirmed ? '' : notice('warn',
+      'Statutory rates have not been confirmed. Nigerian PAYE, pension and NHF rates change with each Finance Act — a stale schedule silently produces the wrong net pay for everyone. Confirm the active schedule against current law before running live payroll.')}
+
+    <div class="card">
+      <h3>Statutory schedule</h3>
+      <div class="grid">
+        <div><label>Schedule</label><select id="pr-sched">${config.available.map((a) => `<option value="${a.id}"${a.id === s.scheduleId ? ' selected' : ''}>${esc(a.label)}</option>`).join('')}</select></div>
+        <div><label>Pay periods per year</label><input id="pr-periods" type="number" value="${s.periodsPerYear}" /></div>
+        <div><label><input type="checkbox" id="pr-nhf" style="width:auto"${s.nhfEnabled ? ' checked' : ''} /> Remit NHF (2.5% of basic)</label></div>
+      </div>
+      ${config.schedule ? `<p class="hint" style="margin-top:12px"><strong>Basis:</strong> ${esc(config.schedule.sourceNote)}</p>` : ''}
+      <div class="actions">
+        <button class="btn secondary" id="pr-save-settings">Save schedule</button>
+        <button class="btn" id="pr-confirm">${confirmed ? 'Re-confirm rates' : 'I have confirmed these rates against current law'}</button>
+      </div>
+      ${confirmed ? `<p class="hint">Confirmed by ${esc(s.ratesConfirmedBy ?? '—')} on ${esc((s.ratesConfirmedAt ?? '').slice(0, 10))}.</p>` : ''}
+      <div id="pr-settings-msg"></div>
+    </div>
+
+    <div class="card">
+      <h3>Compensation</h3>
+      <p class="hint">Versioned by effective date, so an old payslip stays reproducible after a raise. Amounts in naira.</p>
+      <div class="grid">
+        <div><label>Employee</label><select id="c-emp">${state.employees.map((e) => `<option value="${e.id}">${esc(e.firstName + ' ' + e.lastName)}</option>`).join('')}</select></div>
+        <div><label>Effective from</label><input id="c-from" type="date" value="2026-01-01" /></div>
+        <div><label>Basic</label><input id="c-basic" type="number" step="0.01" placeholder="200000" /></div>
+        <div><label>Housing</label><input id="c-housing" type="number" step="0.01" placeholder="100000" /></div>
+        <div><label>Transport</label><input id="c-transport" type="number" step="0.01" placeholder="50000" /></div>
+        <div><label>Bank</label><input id="c-bank" placeholder="GTBank" /></div>
+        <div><label>Account number</label><input id="c-acct" placeholder="0123456789" /></div>
+        <div><label>Account name</label><input id="c-acctname" /></div>
+      </div>
+      <div class="actions"><button class="btn" id="c-save">Save compensation</button></div>
+      <div id="c-msg"></div>
+      <div class="table-wrap" style="margin-top:16px"><table>
+        <thead><tr><th>Employee</th><th>From</th><th>Basic</th><th>Housing</th><th>Transport</th><th>Bank</th></tr></thead>
+        <tbody>${comps.compensation.map((c) => `<tr>
+          <td>${esc(c.employeeName)}</td><td>${esc(c.effectiveFrom)}</td>
+          <td>${money(c.basic)}</td><td>${money(c.housing)}</td><td>${money(c.transport)}</td>
+          <td>${c.bankAccountNumber ? esc(c.bankName ?? '') + ' ' + esc(c.bankAccountNumber) : '<span class="pill warn">missing</span>'}</td>
+        </tr>`).join('') || '<tr><td colspan="6" class="muted">No compensation records yet.</td></tr>'}</tbody>
+      </table></div>
+    </div>
+
+    <div class="card">
+      <h3>Loans and advances</h3>
+      <div class="grid">
+        <div><label>Employee</label><select id="l-emp">${state.employees.map((e) => `<option value="${e.id}">${esc(e.firstName + ' ' + e.lastName)}</option>`).join('')}</select></div>
+        <div><label>Type</label><select id="l-kind"><option value="loan_repayment">Loan</option><option value="salary_advance">Salary advance</option><option value="cooperative">Cooperative</option><option value="union_dues">Union dues</option></select></div>
+        <div><label>Description</label><input id="l-name" placeholder="Staff loan" /></div>
+        <div><label>Principal</label><input id="l-principal" type="number" step="0.01" /></div>
+        <div><label>Per period</label><input id="l-per" type="number" step="0.01" /></div>
+      </div>
+      <div class="actions"><button class="btn secondary" id="l-save">Add</button></div>
+      <div id="l-msg"></div>
+      ${loans.loans.length ? `<div class="table-wrap" style="margin-top:16px"><table>
+        <thead><tr><th>Employee</th><th>Description</th><th>Principal</th><th>Repaid</th><th>Per period</th><th>Status</th></tr></thead>
+        <tbody>${loans.loans.map((l) => `<tr><td>${esc(l.employeeName)}</td><td>${esc(l.name)}</td><td>${money(l.principal)}</td><td>${money(l.paid)}</td><td>${money(l.perPeriod)}</td><td><span class="pill ${l.status === 'active' ? 'ok' : 'neutral'}">${esc(l.status)}</span></td></tr>`).join('')}</tbody>
+      </table></div>` : ''}
+    </div>
+
+    <div class="card">
+      <h3>Run payroll</h3>
+      <div class="grid">
+        <div><label>Period start</label><input id="r-start" type="date" /></div>
+        <div><label>Period end</label><input id="r-end" type="date" /></div>
+        <div><label>Pay date</label><input id="r-pay" type="date" /></div>
+      </div>
+      <div class="actions">
+        <button class="btn secondary" id="r-preview">Preview</button>
+        <button class="btn" id="r-create" disabled>Create run for approval</button>
+      </div>
+      <div id="r-msg"></div>
+    </div>
+
+    <div class="card">
+      <h3>Runs</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Period</th><th>Pay date</th><th>Net total</th><th>Status</th><th></th></tr></thead>
+        <tbody>${runs.runs.map((r) => `<tr>
+          <td>${esc(r.periodStart)} → ${esc(r.periodEnd)}</td>
+          <td>${esc(r.payDate)}</td>
+          <td>${money((r.totals || {}).netPay)}</td>
+          <td><span class="pill ${r.status === 'paid' ? 'ok' : r.status === 'approved' ? 'ok' : r.status === 'pending_approval' ? 'warn' : 'neutral'}">${esc(r.status.replace(/_/g, ' '))}</span></td>
+          <td>
+            ${r.status === 'pending_approval' ? `<button class="btn secondary approve-run" data-id="${r.id}" data-total="${(r.totals || {}).netPay ?? 0}">Approve</button>` : ''}
+            ${['approved', 'paid'].includes(r.status) ? `<button class="btn ghost bank-file" data-id="${r.id}">Bank file</button><button class="btn ghost filings" data-id="${r.id}">Filings</button>` : ''}
+            ${r.status === 'approved' ? `<button class="btn ghost mark-paid" data-id="${r.id}">Mark paid</button>` : ''}
+          </td>
+        </tr>`).join('') || '<tr><td colspan="5" class="muted">No runs yet.</td></tr>'}</tbody>
+      </table></div>
+      <div id="runs-msg"></div>
+    </div>
+  </section>`)
+
+  $('#pr-save-settings', section).addEventListener('click', async () => {
+    try {
+      await req('/v1/admin/payroll/settings', { method: 'PATCH', body: {
+        scheduleId: $('#pr-sched', section).value,
+        periodsPerYear: Number($('#pr-periods', section).value),
+        nhfEnabled: $('#pr-nhf', section).checked,
+      }})
+      await show('payroll')
+    } catch (e) { $('#pr-settings-msg', section).innerHTML = notice('bad', formatError(e)) }
+  })
+
+  $('#pr-confirm', section).addEventListener('click', async () => {
+    const who = state.me.employee.firstName + ' ' + state.me.employee.lastName
+    try {
+      await req('/v1/admin/payroll/settings', { method: 'PATCH', body: {
+        ratesConfirmedBy: who,
+        ratesConfirmedAt: new Date().toISOString(),
+      }})
+      await show('payroll')
+    } catch (e) { $('#pr-settings-msg', section).innerHTML = notice('bad', formatError(e)) }
+  })
+
+  $('#c-save', section).addEventListener('click', async () => {
+    try {
+      await req('/v1/admin/payroll/compensation', { method: 'POST', body: {
+        employeeId: $('#c-emp', section).value,
+        effectiveFrom: $('#c-from', section).value,
+        basic: kobo($('#c-basic', section).value),
+        housing: kobo($('#c-housing', section).value),
+        transport: kobo($('#c-transport', section).value),
+        bankName: $('#c-bank', section).value.trim() || null,
+        bankAccountNumber: $('#c-acct', section).value.trim() || null,
+        bankAccountName: $('#c-acctname', section).value.trim() || null,
+      }})
+      await show('payroll')
+    } catch (e) { $('#c-msg', section).innerHTML = notice('bad', formatError(e)) }
+  })
+
+  $('#l-save', section).addEventListener('click', async () => {
+    try {
+      await req('/v1/admin/payroll/loans', { method: 'POST', body: {
+        employeeId: $('#l-emp', section).value,
+        kind: $('#l-kind', section).value,
+        name: $('#l-name', section).value.trim(),
+        principal: kobo($('#l-principal', section).value),
+        perPeriod: kobo($('#l-per', section).value),
+      }})
+      await show('payroll')
+    } catch (e) { $('#l-msg', section).innerHTML = notice('bad', formatError(e)) }
+  })
+
+  const periodBody = () => ({
+    periodStart: $('#r-start', section).value,
+    periodEnd: $('#r-end', section).value,
+    payDate: $('#r-pay', section).value,
+  })
+
+  $('#r-preview', section).addEventListener('click', async () => {
+    const box = $('#r-msg', section)
+    try {
+      const p = await req('/v1/admin/payroll/runs/preview', { method: 'POST', body: periodBody() })
+      box.innerHTML = `
+        ${p.warnings.map((w) => notice('warn', w)).join('')}
+        ${notice('info', `Nothing has been written. ${p.lines.length} employee(s), net total ${money(p.totals.netPay)}.`)}
+        <div class="grid">
+          <div class="card"><div class="stat">${money(p.totals.gross)}</div><div class="stat-label">Gross</div></div>
+          <div class="card"><div class="stat">${money(p.totals.paye)}</div><div class="stat-label">PAYE</div></div>
+          <div class="card"><div class="stat">${money(p.totals.pensionEmployee)}</div><div class="stat-label">Pension (employee)</div></div>
+          <div class="card"><div class="stat">${money(p.totals.netPay)}</div><div class="stat-label">Net pay</div></div>
+        </div>
+        <div class="table-wrap"><table>
+          <thead><tr><th>#</th><th>Employee</th><th>Gross</th><th>PAYE</th><th>Pension</th><th>NHF</th><th>Deductions</th><th>Net</th><th>Bank</th></tr></thead>
+          <tbody>${p.lines.map((l) => `<tr>
+            <td>${esc(l.employeeNumber)}</td><td>${esc(l.employeeName)}</td>
+            <td>${money(l.gross)}</td><td>${money(l.paye)}</td><td>${money(l.pension)}</td>
+            <td>${money(l.nhf)}</td><td>${money(l.deductions)}</td><td><strong>${money(l.netPay)}</strong></td>
+            <td>${l.hasBankDetails ? '<span class="pill ok">ok</span>' : '<span class="pill warn">missing</span>'}</td>
+          </tr>`).join('')}</tbody>
+        </table></div>`
+      $('#r-create', section).disabled = p.lines.length === 0
+    } catch (e) { box.innerHTML = notice('bad', formatError(e)) }
+  })
+
+  $('#r-create', section).addEventListener('click', async () => {
+    try {
+      await req('/v1/admin/payroll/runs', { method: 'POST', body: periodBody() })
+      await show('payroll')
+    } catch (e) { $('#r-msg', section).innerHTML = notice('bad', formatError(e)) }
+  })
+
+  for (const b of section.querySelectorAll('.approve-run')) {
+    b.addEventListener('click', async () => {
+      try {
+        await req(`/v1/admin/payroll/runs/${b.dataset.id}/approve`, {
+          method: 'POST',
+          body: { confirmTotals: Number(b.dataset.total) },
+        })
+        await show('payroll')
+      } catch (e) { $('#runs-msg', section).innerHTML = notice('bad', formatError(e)) }
+    })
+  }
+
+  for (const b of section.querySelectorAll('.mark-paid')) {
+    b.addEventListener('click', async () => {
+      try {
+        await req(`/v1/admin/payroll/runs/${b.dataset.id}/mark-paid`, { method: 'POST' })
+        await show('payroll')
+      } catch (e) { $('#runs-msg', section).innerHTML = notice('bad', formatError(e)) }
+    })
+  }
+
+  for (const b of section.querySelectorAll('.bank-file')) {
+    b.addEventListener('click', async () => {
+      // The endpoint requires an Authorization header, so fetch then download.
+      const res = await fetch(`${API}/v1/admin/payroll/runs/${b.dataset.id}/bank-file`, {
+        headers: { authorization: `Bearer ${store.access}` },
+      })
+      if (!res.ok) { $('#runs-msg', section).innerHTML = notice('bad', 'Could not generate the bank file.'); return }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url; a.download = `payroll-${b.dataset.id}.csv`; a.click()
+      URL.revokeObjectURL(url)
+    })
+  }
+
+  for (const b of section.querySelectorAll('.filings')) {
+    b.addEventListener('click', async () => {
+      try {
+        const f = await req(`/v1/admin/payroll/runs/${b.dataset.id}/filings`)
+        $('#runs-msg', section).innerHTML = `
+          <div class="grid">
+            <div class="card"><div class="stat">${money(f.paye.total)}</div><div class="stat-label">PAYE remittance</div></div>
+            <div class="card"><div class="stat">${money(f.pension.total)}</div><div class="stat-label">Pension (both parts)</div></div>
+            <div class="card"><div class="stat">${money(f.nhf.total)}</div><div class="stat-label">NHF</div></div>
+            <div class="card"><div class="stat">${money(f.nsitf.total)}</div><div class="stat-label">NSITF (employer)</div></div>
+          </div>
+          ${notice('info', `Computed under schedule "${esc(f.scheduleId)}" for ${esc(f.run.periodStart)} → ${esc(f.run.periodEnd)}.`)}`
+      } catch (e) { $('#runs-msg', section).innerHTML = notice('bad', formatError(e)) }
+    })
+  }
 
   return section
 }

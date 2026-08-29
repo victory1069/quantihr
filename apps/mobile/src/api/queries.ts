@@ -37,6 +37,8 @@ export const keys = {
   balances: ['leave', 'balances'] as const,
   requests: (status?: string) => ['leave', 'requests', status ?? 'all'] as const,
   documents: ['documents'] as const,
+  payslips: ['payroll', 'payslips'] as const,
+  payslip: (id: string) => ['payroll', 'payslip', id] as const,
   approvals: ['team', 'approvals'] as const,
   calendar: (from: string, to: string) => ['team', 'calendar', from, to] as const,
   teamAttendance: (from: string, to: string) => ['team', 'attendance', from, to] as const,
@@ -290,6 +292,76 @@ export function useUpdateMe() {
   return useMutation({
     mutationFn: (body: Record<string, unknown>) => api.patch<{ ok: boolean }>('/v1/me', body),
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.me }),
+  })
+}
+
+// --- Payroll ---------------------------------------------------------------
+
+export interface PayslipSummary {
+  id: string
+  runId: string
+  gross: number
+  netPay: number
+  paye: number
+  periodStart: string
+  periodEnd: string
+  payDate: string
+  status: string
+}
+
+export interface PayslipLine {
+  code: string
+  label: string
+  amount: number
+  category: 'earning' | 'statutory' | 'deduction' | 'employer_cost'
+}
+
+export interface PayslipChange {
+  code: string
+  label: string
+  previous: number
+  current: number
+  delta: number
+  direction: 'increase' | 'decrease' | 'new' | 'removed'
+}
+
+export interface PayslipDetail {
+  id: string
+  periodStart: string
+  periodEnd: string
+  payDate: string
+  detail: {
+    gross: number
+    netPay: number
+    paye: number
+    pensionEmployee: number
+    nhf: number
+    totalDeductions: number
+    lines: PayslipLine[]
+  }
+  explanation: {
+    netDelta: number
+    grossDelta: number
+    changes: PayslipChange[]
+    summary: string
+  } | null
+}
+
+export function usePayslips() {
+  return useQuery({
+    queryKey: keys.payslips,
+    queryFn: ({ signal }) =>
+      api.get<{ payslips: PayslipSummary[] }>('/v1/payroll/payslips', signal),
+    ...SLOW,
+  })
+}
+
+export function usePayslip(id: string | undefined) {
+  return useQuery({
+    queryKey: keys.payslip(id ?? ''),
+    queryFn: ({ signal }) => api.get<PayslipDetail>(`/v1/payroll/payslips/${id}`, signal),
+    enabled: !!id,
+    ...SLOW,
   })
 }
 

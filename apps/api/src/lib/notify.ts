@@ -20,6 +20,7 @@ export type NotificationEvent =
   | 'checkin.window_opening'
   | 'balance.expiring'
   | 'document.uploaded'
+  | 'payslip.ready'
 
 export interface NotificationInput {
   orgId: string
@@ -39,6 +40,9 @@ const PREFERENCE_KEY: Record<NotificationEvent, string> = {
   'checkin.window_opening': 'checkinReminders',
   'balance.expiring': 'balanceExpiry',
   'document.uploaded': 'documents',
+  // Payslip alerts are not opt-out: an employee must be told their pay is
+  // ready. The figure itself never appears in the preview (spec §5.5).
+  'payslip.ready': 'payslips',
 }
 
 /**
