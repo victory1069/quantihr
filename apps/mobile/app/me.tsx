@@ -12,7 +12,15 @@
  */
 
 import { useState } from 'react'
-import { Linking, Platform, RefreshControl, StyleSheet, Text, View } from 'react-native'
+import {
+  Linking,
+  Platform,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native'
 import { useRouter } from 'expo-router'
 import { useQueryClient } from '@tanstack/react-query'
 import {
@@ -112,9 +120,38 @@ export default function Me() {
 
       {error ? <ErrorNotice message={error} /> : null}
 
+      {/* Pay and leave live here now that the bar is Home/Attendance/Todos/Me.
+          Pay is behind a biometric gate anyway, and a tab that always prompts
+          for Face ID is a tab people learn not to press. */}
+      <Appear index={1}>
+        <Label>Your record</Label>
+      </Appear>
+
+      <Appear index={2}>
+        <Card>
+          <HubRow
+            label="Pay"
+            detail="Payslips, and what changed since last month"
+            onPress={() => router.push('/payslips')}
+          />
+          <Divider />
+          <HubRow
+            label="Leave"
+            detail="Balances, requests and history"
+            onPress={() => router.push('/leave')}
+          />
+          <Divider />
+          <HubRow
+            label="Attendance"
+            detail="Your check-in record"
+            onPress={() => router.push('/attendance')}
+          />
+        </Card>
+      </Appear>
+
       {/* Anything awaiting a signature leads, in accent pink. */}
       {needsSignature.map((d, i) => (
-        <Appear key={d.id} index={1 + i}>
+        <Appear key={d.id} index={3 + i}>
           <Card tone="danger">
             <View style={styles.signRow}>
               <Text style={styles.signTitle}>{d.name}</Text>
@@ -135,11 +172,11 @@ export default function Me() {
       ))}
 
       {/* Vault */}
-      <Appear index={2}>
+      <Appear index={4}>
         <Label>Your vault · unlocked each time</Label>
       </Appear>
 
-      <Appear index={3}>
+      <Appear index={5}>
         <Card>
           {documents.data ? (
             vault.length > 0 ? (
@@ -178,11 +215,11 @@ export default function Me() {
       </Appear>
 
       {/* Letter requests — spec §5.5 self-service, the most repetitive HR ask. */}
-      <Appear index={4}>
+      <Appear index={6}>
         <Label>Request a letter</Label>
       </Appear>
 
-      <Appear index={5}>
+      <Appear index={7}>
         <Card>
           <View style={styles.chipRow}>
             <Chip label="Employment confirmation" />
@@ -198,11 +235,11 @@ export default function Me() {
       </Appear>
 
       {/* Settings */}
-      <Appear index={6}>
+      <Appear index={8}>
         <Label>Settings</Label>
       </Appear>
 
-      <Appear index={7}>
+      <Appear index={9}>
         <Card>
           <Button
             label="Profile and notifications"
@@ -212,6 +249,27 @@ export default function Me() {
         </Card>
       </Appear>
     </Screen>
+  )
+}
+
+/** A navigation line inside the hub card. */
+function HubRow({
+  label,
+  detail,
+  onPress,
+}: {
+  label: string
+  detail: string
+  onPress: () => void
+}) {
+  return (
+    <Pressable onPress={onPress} accessibilityRole="button" style={styles.hubRow}>
+      <View style={{ flex: 1, gap: 2 }}>
+        <Text style={styles.hubLabel}>{label}</Text>
+        <Text style={styles.hubDetail}>{detail}</Text>
+      </View>
+      <Text style={styles.hubChevron}>›</Text>
+    </Pressable>
   )
 }
 
@@ -291,6 +349,16 @@ const styles = StyleSheet.create({
     fontFamily: font.family,
   },
   docMeta: { fontSize: font.size.sm, color: colour.textMuted, fontFamily: font.family },
+
+  hubRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md },
+  hubLabel: {
+    fontSize: font.size.md,
+    fontWeight: font.weight.semibold,
+    color: colour.text,
+    fontFamily: font.family,
+  },
+  hubDetail: { fontSize: font.size.sm, color: colour.textMuted, fontFamily: font.family },
+  hubChevron: { fontSize: 22, color: colour.textFaint },
 
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
   hint: {

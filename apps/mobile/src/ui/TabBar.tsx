@@ -41,18 +41,72 @@ interface Tab {
  * Manager mode swaps Leave for Team and keeps everything else, so the two modes
  * differ by exactly one tab and nothing moves under the thumb.
  */
+/**
+ * Employee: Home · Attendance · Todos · Me.
+ *
+ * Pay sits under Me rather than in the bar. It is read a few times a year, and
+ * it is behind a biometric gate anyway — a tab that always prompts for Face ID
+ * is a tab people learn not to press.
+ *
+ * Todos earns its slot because it is the only place the app asks something *of*
+ * the employee. Leaving those items scattered across screens is how a contract
+ * goes unsigned for three weeks.
+ */
 const EMPLOYEE_TABS: Tab[] = [
   { href: '/', label: 'Home', icon: 'home', match: (p) => p === '/' },
-  { href: '/leave', label: 'Leave', icon: 'leave', match: (p) => p.startsWith('/leave') },
-  { href: '/payslips', label: 'Pay', icon: 'payroll', match: (p) => p.startsWith('/payslips') },
-  { href: '/me', label: 'Me', icon: 'profile', match: (p) => p.startsWith('/me') || p.startsWith('/documents') || p.startsWith('/profile') },
+  {
+    href: '/attendance',
+    label: 'Attendance',
+    icon: 'time',
+    match: (p) => p.startsWith('/attendance') || p.startsWith('/checkin'),
+  },
+  { href: '/todos', label: 'Todos', icon: 'todos', match: (p) => p.startsWith('/todos') },
+  {
+    href: '/me',
+    label: 'Me',
+    icon: 'profile',
+    match: (p) =>
+      p.startsWith('/me') ||
+      p.startsWith('/documents') ||
+      p.startsWith('/profile') ||
+      p.startsWith('/payslips') ||
+      p.startsWith('/leave'),
+  },
 ]
 
+/**
+ * Manager: Home · Team · Calendar · Personal.
+ *
+ * "Personal" rather than "Me" because the distinction being drawn is between
+ * the manager's team and the manager's own record — a manager is still an
+ * employee with leave to book and a payslip to read.
+ */
 const MANAGER_TABS: Tab[] = [
   { href: '/', label: 'Home', icon: 'home', match: (p) => p === '/' },
-  { href: '/manage/approvals', label: 'Team', icon: 'approvals', match: (p) => p.startsWith('/manage') },
-  { href: '/payslips', label: 'Pay', icon: 'payroll', match: (p) => p.startsWith('/payslips') },
-  { href: '/me', label: 'Me', icon: 'profile', match: (p) => p.startsWith('/me') || p.startsWith('/documents') || p.startsWith('/profile') },
+  {
+    href: '/manage/approvals',
+    label: 'Team',
+    icon: 'team',
+    match: (p) => p.startsWith('/manage/approvals') || p.startsWith('/manage/attendance'),
+  },
+  {
+    href: '/manage/calendar',
+    label: 'Calendar',
+    icon: 'calendar',
+    match: (p) => p.startsWith('/manage/calendar'),
+  },
+  {
+    href: '/me',
+    label: 'Personal',
+    icon: 'profile',
+    match: (p) =>
+      p.startsWith('/me') ||
+      p.startsWith('/documents') ||
+      p.startsWith('/profile') ||
+      p.startsWith('/payslips') ||
+      p.startsWith('/leave') ||
+      p.startsWith('/attendance'),
+  },
 ]
 
 export function TabBar() {

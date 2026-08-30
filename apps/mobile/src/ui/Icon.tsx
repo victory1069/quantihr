@@ -25,6 +25,8 @@ export type IconName =
   | 'approvals'
   | 'calendar'
   | 'insights'
+  | 'todos'
+  | 'team'
 
 interface IconProps {
   name: IconName
@@ -276,6 +278,86 @@ export function Icon({ name, size = 24, color = colour.textMuted, accent }: Icon
               height: 3 * s,
               borderRadius: 1.5 * s,
               backgroundColor: tint,
+            }}
+          />
+        </View>
+      )
+
+    // Checklist: three ticked lines.
+    case 'todos':
+      return (
+        <View style={box}>
+          {[6, 12, 18].map((y, i) => (
+            <View key={y}>
+              <View
+                style={{
+                  position: 'absolute',
+                  left: 3 * s,
+                  top: (y - 2) * s,
+                  width: 4.5 * s,
+                  height: 2.4 * s,
+                  borderLeftWidth: stroke,
+                  borderBottomWidth: stroke,
+                  borderColor: i === 0 ? tint : color,
+                  transform: [{ rotate: '-45deg' }],
+                }}
+              />
+              <View style={line({ left: 11 * s, top: (y - 1) * s, width: 10 * s, height: stroke })} />
+            </View>
+          ))}
+        </View>
+      )
+
+    // Two people — the manager's team.
+    case 'team':
+      return (
+        <View style={box}>
+          <View
+            style={{
+              position: 'absolute',
+              left: 4.5 * s,
+              top: 3.5 * s,
+              width: 7 * s,
+              height: 7 * s,
+              borderRadius: 3.5 * s,
+              borderWidth: stroke,
+              borderColor: color,
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              left: 1.5 * s,
+              top: 13 * s,
+              width: 13 * s,
+              height: 11 * s,
+              borderRadius: 6.5 * s,
+              borderWidth: stroke,
+              borderColor: color,
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              left: 13.5 * s,
+              top: 5.5 * s,
+              width: 6 * s,
+              height: 6 * s,
+              borderRadius: 3 * s,
+              borderWidth: stroke,
+              borderColor: tint,
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              left: 13 * s,
+              top: 14 * s,
+              width: 9.5 * s,
+              height: 9 * s,
+              borderRadius: 5 * s,
+              borderWidth: stroke,
+              borderColor: tint,
             }}
           />
         </View>

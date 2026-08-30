@@ -64,12 +64,12 @@ const PEOPLE: SeedPerson[] = [
     department: 'Operations', managerNumber: null, startDate: '2019-03-01', roleId: null,
   },
   {
-    number: 'QH-002', first: 'Tunde', last: 'Bello', email: 'tunde@kanjufoods.test', phone: '+2348031234542',
+    number: 'QH-002', first: 'Tunde', last: 'Bello', email: 'manager@kanjufoods.test', phone: '+2348031234542',
     title: 'Operations Manager', roles: ['employee', 'manager'],
     department: 'Operations', managerNumber: 'QH-001', startDate: '2020-06-15', roleId: null,
   },
   {
-    number: 'QH-003', first: 'Ngozi', last: 'Eze', email: 'ngozi@kanjufoods.test', phone: '+2348031234543',
+    number: 'QH-003', first: 'Ngozi', last: 'Eze', email: 'employee@kanjufoods.test', phone: '+2348031234543',
     title: 'Shift Supervisor', roles: ['employee'],
     department: 'Operations', managerNumber: 'QH-002', startDate: '2021-01-11', roleId: 'supervisor',
   },
@@ -365,8 +365,14 @@ export async function seedIfEmpty(db: Database): Promise<void> {
   const orgs = await db.lookup.orgs()
   if (orgs.length > 0) return
   const { orgId } = await seed(db)
-  // eslint-disable-next-line no-console
-  console.log(`[seed] created demo org ${orgId} — sign in as amaka@kanjufoods.test`)
+
+  /* eslint-disable no-console */
+  console.log(`[seed] created demo org ${orgId}`)
+  console.log('[seed] sign in with:')
+  console.log('  employee@kanjufoods.test  Ngozi Eze · Shift Supervisor  (employee)')
+  console.log('  manager@kanjufoods.test   Tunde Bello · Operations Mgr  (manager)')
+  console.log('  amaka@kanjufoods.test     Amaka Obi · Head of People    (HR console)')
+  /* eslint-enable no-console */
 }
 
 // Direct invocation: `npm run seed`

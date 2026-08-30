@@ -123,8 +123,10 @@ interface SessionState {
   me: MeResponse | null
   /** Biometric gate satisfied for this app session (spec §9). */
   unlocked: boolean
-  /** Manager-mode tab visibility, toggled in the tab bar. */
+  /** Which tab set is showing. Defaults from role, then user-controlled. */
   managerMode: boolean
+  /** True once the user has switched mode themselves. */
+  modeChosen: boolean
   deviceReviewRequired: boolean
   setMe: (me: MeResponse | null) => void
   setUnlocked: (unlocked: boolean) => void
@@ -138,12 +140,36 @@ export const useSession = create<SessionState>((set) => ({
   me: null,
   unlocked: false,
   managerMode: false,
+  modeChosen: false,
   deviceReviewRequired: false,
-  setMe: (me) => set({ me }),
+  /**
+   * Setting the profile also picks the default mode.
+   *
+   * A manager signing in lands in their own view rather than the employee one
+   * with a toggle to find — their queue is why they opened the app. It stays a
+   * mode rather than a second app, because a manager is also an employee with
+   * their own leave and pay, which is what the Personal tab is for.
+   *
+   * Only applied once per session, so an explicit switch is never overridden.
+   */
+  setMe: (me) =>
+    set((state) => ({
+      me,
+      managerMode: state.modeChosen
+        ? state.managerMode
+        : !!me?.roles.some((r) => r === 'manager' || r === 'hr_admin' || r === 'owner'),
+    })),
   setUnlocked: (unlocked) => set({ unlocked }),
-  setManagerMode: (managerMode) => set({ managerMode }),
+  setManagerMode: (managerMode) => set({ managerMode, modeChosen: true }),
   setDeviceReviewRequired: (deviceReviewRequired) => set({ deviceReviewRequired }),
-  reset: () => set({ status: 'signed-out', me: null, unlocked: false, managerMode: false }),
+  reset: () =>
+    set({
+      status: 'signed-out',
+      me: null,
+      unlocked: false,
+      managerMode: false,
+      modeChosen: false,
+    }),
 }))
 
 export function hasRole(me: MeResponse | null, ...roles: Role[]): boolean {
