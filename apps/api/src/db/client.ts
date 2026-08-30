@@ -57,6 +57,17 @@ export interface LookupApi {
     revokedAt: Date | null
   } | null>
   orgs(): Promise<{ orgId: string; timezone: string; settings: Record<string, unknown> }[]>
+  /**
+   * Invite lookup for sign-up. Unlike the others this deliberately confirms
+   * membership — see the note on `auth_lookup_invite` in ddl.sql.
+   */
+  invite(email: string): Promise<{
+    orgId: string
+    orgName: string
+    email: string
+    phone: string | null
+    employeeStatus: string
+  } | null>
 }
 
 /** Serialises transactions on a single-connection driver. */
@@ -222,6 +233,19 @@ function makeLookup(
         timezone: String(row.timezone),
         settings: (row.settings ?? {}) as Record<string, unknown>,
       }))
+    },
+
+    async invite(email) {
+      const r = await gate.run(() => exec('select * from auth_lookup_invite($1)', [email]))
+      const row = r[0]
+      if (!row) return null
+      return {
+        orgId: String(row.org_id),
+        orgName: String(row.org_name),
+        email: String(row.email),
+        phone: row.phone ? String(row.phone) : null,
+        employeeStatus: String(row.employee_status),
+      }
     },
   }
 }

@@ -54,6 +54,10 @@ const PUBLIC_ROUTES = new Set([
   'POST:/v1/auth/magic-link',
   'POST:/v1/auth/verify',
   'POST:/v1/auth/refresh',
+  // Pre-tenant sign-up lookups; rate-limited in the route.
+  'GET:/v1/auth/invite',
+  'POST:/v1/auth/otp/request',
+  'POST:/v1/auth/otp/verify',
   'GET:/health',
   // Static console shell. It holds no data — everything it shows is fetched
   // over the same authenticated /v1 endpoints the mobile client uses.

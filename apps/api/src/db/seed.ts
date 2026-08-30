@@ -47,6 +47,8 @@ interface SeedPerson {
   first: string
   last: string
   email: string
+  /** Needed for the phone-verification step of sign-up (screens L5/L6). */
+  phone: string
   title: string
   roles: string[]
   department: 'Operations' | 'Finance' | 'Engineering'
@@ -57,43 +59,43 @@ interface SeedPerson {
 
 const PEOPLE: SeedPerson[] = [
   {
-    number: 'QH-001', first: 'Amaka', last: 'Obi', email: 'amaka@kanjufoods.test',
+    number: 'QH-001', first: 'Amaka', last: 'Obi', email: 'amaka@kanjufoods.test', phone: '+2348031234541',
     title: 'Head of People', roles: ['employee', 'hr_admin', 'owner'],
     department: 'Operations', managerNumber: null, startDate: '2019-03-01', roleId: null,
   },
   {
-    number: 'QH-002', first: 'Tunde', last: 'Bello', email: 'tunde@kanjufoods.test',
+    number: 'QH-002', first: 'Tunde', last: 'Bello', email: 'tunde@kanjufoods.test', phone: '+2348031234542',
     title: 'Operations Manager', roles: ['employee', 'manager'],
     department: 'Operations', managerNumber: 'QH-001', startDate: '2020-06-15', roleId: null,
   },
   {
-    number: 'QH-003', first: 'Ngozi', last: 'Eze', email: 'ngozi@kanjufoods.test',
+    number: 'QH-003', first: 'Ngozi', last: 'Eze', email: 'ngozi@kanjufoods.test', phone: '+2348031234543',
     title: 'Shift Supervisor', roles: ['employee'],
     department: 'Operations', managerNumber: 'QH-002', startDate: '2021-01-11', roleId: 'supervisor',
   },
   {
-    number: 'QH-004', first: 'Musa', last: 'Ibrahim', email: 'musa@kanjufoods.test',
+    number: 'QH-004', first: 'Musa', last: 'Ibrahim', email: 'musa@kanjufoods.test', phone: '+2348031234544',
     title: 'Logistics Coordinator', roles: ['employee'],
     department: 'Operations', managerNumber: 'QH-002', startDate: '2022-09-05', roleId: null,
   },
   {
-    number: 'QH-005', first: 'Blessing', last: 'Okafor', email: 'blessing@kanjufoods.test',
+    number: 'QH-005', first: 'Blessing', last: 'Okafor', email: 'blessing@kanjufoods.test', phone: '+2348031234545',
     title: 'Quality Lead', roles: ['employee'],
     department: 'Operations', managerNumber: 'QH-002', startDate: '2023-02-20', roleId: 'supervisor',
   },
   {
-    number: 'QH-006', first: 'Chidi', last: 'Nwosu', email: 'chidi@kanjufoods.test',
+    number: 'QH-006', first: 'Chidi', last: 'Nwosu', email: 'chidi@kanjufoods.test', phone: '+2348031234546',
     title: 'Warehouse Assistant', roles: ['employee'],
     // A mid-year joiner, so the pro-rating shows up on the balance screen.
     department: 'Operations', managerNumber: 'QH-002', startDate: '2026-07-01', roleId: null,
   },
   {
-    number: 'QH-007', first: 'Fatima', last: 'Yusuf', email: 'fatima@kanjufoods.test',
+    number: 'QH-007', first: 'Fatima', last: 'Yusuf', email: 'fatima@kanjufoods.test', phone: '+2348031234547',
     title: 'Financial Analyst', roles: ['employee'],
     department: 'Finance', managerNumber: 'QH-001', startDate: '2021-11-02', roleId: null,
   },
   {
-    number: 'QH-008', first: 'Segun', last: 'Adeyemi', email: 'segun@kanjufoods.test',
+    number: 'QH-008', first: 'Segun', last: 'Adeyemi', email: 'segun@kanjufoods.test', phone: '+2348031234548',
     title: 'Software Engineer', roles: ['employee'],
     department: 'Engineering', managerNumber: 'QH-001', startDate: '2024-04-08', roleId: null,
   },
@@ -198,6 +200,7 @@ export async function seed(db: Database): Promise<{ orgId: string }> {
           firstName: person.first,
           lastName: person.last,
           email: person.email,
+          phone: person.phone,
           departmentId: deptByName.get(person.department) ?? null,
           locationId: site!.id,
           jobTitle: person.title,

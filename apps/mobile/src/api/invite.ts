@@ -6,10 +6,10 @@
  * read-only because it is the payroll identity link (L3), and an unrecognised
  * address gets an explanation rather than a signup form (L14).
  *
- * Backend status: `/v1/auth/invite` does not exist yet. Until it does this
- * resolves from whatever the invite deep link carried, and falls back to a
- * generic state rather than inventing an employer name. Wiring it up means one
- * endpoint returning `{ orgName, email, phoneHint }` for an invite token.
+ * Backed by `GET /v1/auth/invite`, which is rate-limited because it confirms
+ * whether an address belongs to an employee. A network failure resolves to an
+ * unknown state rather than "no invite" — telling someone they were never
+ * invited because a request timed out would be a bad first impression.
  */
 
 import { useQuery } from '@tanstack/react-query'
@@ -23,6 +23,10 @@ export interface Invite {
   phoneHint: string | null
   /** False when the address is not on any people list — drives screen L14. */
   found: boolean
+  /** Employment has ended; sign-up is closed but the archive may be open (X4). */
+  ended?: boolean
+  /** The lookup could not be completed. Distinct from `found: false`. */
+  unknown?: boolean
 }
 
 const UNRESOLVED: Invite = {
@@ -30,12 +34,13 @@ const UNRESOLVED: Invite = {
   email: null,
   phoneHint: null,
   found: true,
+  unknown: true,
 }
 
-export function useInvite() {
+export function useInvite(emailOverride?: string) {
   const params = useLocalSearchParams<{ invite?: string; email?: string }>()
   const token = params.invite
-  const email = params.email
+  const email = emailOverride ?? params.email
 
   return useQuery({
     queryKey: ['invite', token ?? email ?? 'none'],
@@ -43,16 +48,16 @@ export function useInvite() {
       if (!token && !email) return UNRESOLVED
 
       try {
-        const query = token ? `token=${encodeURIComponent(token)}` : `email=${encodeURIComponent(email!)}`
+        const query = token
+          ? `token=${encodeURIComponent(token)}`
+          : `email=${encodeURIComponent(email!)}`
         const response = await fetch(`${API_BASE_URL}/v1/auth/invite?${query}`)
 
-        // The endpoint is not built yet. Treat its absence as "unknown invite"
-        // rather than "no invite" — telling someone they were never invited
-        // because a route is missing would be a bad first impression.
-        if (response.status === 404 || response.status === 501) return UNRESOLVED
+        // Anything other than a clean answer is "unknown", never "no invite".
         if (!response.ok) return UNRESOLVED
 
-        return (await response.json()) as Invite
+        const body = (await response.json()) as Invite
+        return { ...body, orgName: body.orgName ?? 'your employer' }
       } catch {
         return UNRESOLVED
       }

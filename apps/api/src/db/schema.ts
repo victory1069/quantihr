@@ -139,6 +139,20 @@ export const refreshTokens = pgTable('refresh_tokens', {
   createdAt: createdAt(),
 })
 
+export const otpCodes = pgTable('otp_codes', {
+  id: id(),
+  orgId: orgId(),
+  userId: uuid('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+  purpose: text('purpose').notNull().default('phone_verification'),
+  codeHash: text('code_hash').notNull(),
+  destination: text('destination').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  attempts: integer('attempts').notNull().default(0),
+  consumedAt: timestamp('consumed_at', { withTimezone: true }),
+  lockedUntil: timestamp('locked_until', { withTimezone: true }),
+  createdAt: createdAt(),
+})
+
 export const devices = pgTable('devices', {
   id: id(),
   orgId: orgId(),
@@ -430,6 +444,7 @@ export const schema = {
   employees,
   magicLinkTokens,
   refreshTokens,
+  otpCodes,
   devices,
   checkinCodes,
   attendanceRecords,

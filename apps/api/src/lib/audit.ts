@@ -30,6 +30,7 @@ export type AuditAction =
   | 'document.acknowledged'
   | 'config.updated'
   | 'auth.logged_in'
+  | 'auth.phone_verified'
   | 'payroll.run_created'
   | 'payroll.run_approved'
   | 'payroll.run_paid'

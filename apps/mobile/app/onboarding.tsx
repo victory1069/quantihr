@@ -57,11 +57,11 @@ const RAIL: Step[] = ['email', 'sent', 'phone', 'details']
 export default function Onboarding() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
-  const invite = useInvite()
+  const [email, setEmail] = useState('')
+  const invite = useInvite(email || undefined)
   const me = useMe()
 
   const [step, setStep] = useState<Step>('email')
-  const [email, setEmail] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [devLink, setDevLink] = useState<string | null>(null)
@@ -160,9 +160,14 @@ export default function Onboarding() {
             />
           ) : step === 'phone' ? (
             <PhoneStep
+              email={email}
               hint={invite.data?.phoneHint ?? null}
               error={error}
               onError={setError}
+              onVerified={() => {
+                setError(null)
+                setStep('details')
+              }}
               onSkip={() => {
                 setError(null)
                 setStep('details')
@@ -364,28 +369,112 @@ function SentStep({
 // L5 / L6 · Phone
 // ---------------------------------------------------------------------------
 
-const MAX_ATTEMPTS = 3
-
+/**
+ * L5 / L6 — phone verification.
+ *
+ * Backed by `/v1/auth/otp/request` and `/v1/auth/otp/verify`. The destination
+ * comes from the HR record, never from the user, so this cannot be turned into
+ * a way to send SMS to arbitrary numbers.
+ *
+ * The server owns the attempt count and the lockout; this screen only renders
+ * what it is told. Duplicating the limit client-side would let a modified
+ * client keep guessing.
+ */
 function PhoneStep({
+  email,
   hint,
   error,
   onError,
+  onVerified,
   onSkip,
 }: {
+  email: string
   hint: string | null
   error: string | null
   onError: (message: string | null) => void
+  onVerified: () => void
   onSkip: () => void
 }) {
   const [code, setCode] = useState('')
-  const [attempts, setAttempts] = useState(0)
-  const failed = !!error
+  const [sending, setSending] = useState(false)
+  const [verifying, setVerifying] = useState(false)
+  const [sentTo, setSentTo] = useState<string | null>(hint)
+  const [attemptsLeft, setAttemptsLeft] = useState<number | null>(null)
+  const [locked, setLocked] = useState(false)
+  const [devCode, setDevCode] = useState<string | null>(null)
+  const requested = useRef(false)
 
-  const left = MAX_ATTEMPTS - attempts
+  const request = useCallback(async () => {
+    setSending(true)
+    onError(null)
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/auth/otp/request`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email }),
+      })
+      const body = (await response.json()) as {
+        phoneHint?: string | null
+        devCode?: string
+        message?: string
+      }
+      if (!response.ok) {
+        onError(body.message ?? 'Could not send a code.')
+        return
+      }
+      setSentTo(body.phoneHint ?? hint)
+      setDevCode(body.devCode ?? null)
+    } catch {
+      onError('Could not reach the server. Check your connection and try again.')
+    } finally {
+      setSending(false)
+    }
+  }, [email, hint, onError])
+
+  useEffect(() => {
+    if (requested.current) return
+    requested.current = true
+    void request()
+  }, [request])
+
+  const verify = async (submitted: string) => {
+    setVerifying(true)
+    onError(null)
+    try {
+      const response = await fetch(`${API_BASE_URL}/v1/auth/otp/verify`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ email, code: submitted }),
+      })
+      const body = (await response.json()) as {
+        verified?: boolean
+        message?: string
+        details?: { attemptsLeft?: number; locked?: boolean }
+      }
+
+      if (response.ok && body.verified) {
+        onVerified()
+        return
+      }
+
+      setAttemptsLeft(body.details?.attemptsLeft ?? null)
+      setLocked(!!body.details?.locked || response.status === 429)
+      onError(body.message ?? 'That code did not match.')
+      setCode('')
+    } catch {
+      onError('Could not reach the server. Check your connection and try again.')
+    } finally {
+      setVerifying(false)
+    }
+  }
+
+  const failed = !!error
 
   return (
     <>
-      <Text style={styles.title}>{failed ? 'That code didn’t match' : 'Verify your phone'}</Text>
+      <Text style={styles.title}>
+        {failed ? 'That code didn’t match' : 'Verify your phone'}
+      </Text>
       <Text style={styles.lede}>
         {failed
           ? 'Check the most recent message — older codes stop working once a new one is sent.'
@@ -394,7 +483,7 @@ function PhoneStep({
 
       {!failed ? (
         <Text style={styles.fieldLabel}>
-          Code sent to {hint ?? 'the number on your HR record'}
+          Code sent to {sentTo ?? 'the number on your HR record'}
         </Text>
       ) : null}
 
@@ -405,34 +494,46 @@ function PhoneStep({
           if (failed) onError(null)
         }}
         state={failed ? 'error' : 'idle'}
-        onComplete={() => {
-          // No OTP endpoint exists yet; see the note below. Every submission
-          // fails closed rather than pretending to verify.
-          setAttempts((n) => n + 1)
-          onError('Phone verification is not switched on for this build.')
-        }}
+        onComplete={(full) => void verify(full)}
       />
 
-      {failed ? (
+      {locked ? (
         <Card tone="danger">
           <Text style={styles.cardBody}>
-            <Text style={styles.strong}>{Math.max(0, left)} attempts left.</Text> After that
+            Verification is paused for 15 minutes. An email sign-in link still works — it uses
+            a different check, so the cool-down doesn&apos;t apply.
+          </Text>
+        </Card>
+      ) : attemptsLeft !== null ? (
+        <Card tone="danger">
+          <Text style={styles.cardBody}>
+            <Text style={styles.strong}>{attemptsLeft} attempts left.</Text> After that
             we&apos;ll pause verification for 15 minutes and email you a link instead.
           </Text>
         </Card>
       ) : (
-        <ResendTimer seconds={30} label="Resend code" onResend={() => setCode('')} />
+        <ResendTimer
+          seconds={30}
+          label="Resend code"
+          onResend={() => {
+            setCode('')
+            void request()
+          }}
+        />
       )}
 
-      {/* Honest state: the screen is built, the endpoint is not. Skipping keeps
-          the flow completable rather than dead-ending a real user. */}
-      <ErrorNotice
-        tone="info"
-        message="Phone verification needs an SMS provider and a /v1/auth/otp endpoint, neither of which exists yet. Skip for now."
-      />
+      {devCode ? (
+        <ErrorNotice tone="info" message={`Development: your code is ${devCode}`} />
+      ) : null}
 
       <View style={styles.spacer} />
-      <Button label="Skip phone verification" onPress={onSkip} />
+      <Button
+        label={verifying ? 'Checking…' : 'Verify'}
+        loading={verifying || sending}
+        disabled={code.length < 6}
+        onPress={() => void verify(code)}
+      />
+      <Button label="Skip for now" variant="ghost" onPress={onSkip} />
     </>
   )
 }

@@ -142,6 +142,29 @@ create table if not exists refresh_tokens (
   created_at   timestamptz not null default now()
 );
 
+-- One-time codes for phone verification during sign-up.
+--
+-- Separate from magic_link_tokens because the threat model differs: a 6-digit
+-- code is brute-forceable, so this table carries an attempt counter and a
+-- lockout, neither of which a 256-bit link token needs.
+create table if not exists otp_codes (
+  id          uuid primary key default gen_random_uuid(),
+  org_id      uuid not null references organisations(id) on delete cascade,
+  user_id     uuid not null references users(id) on delete cascade,
+  purpose     text not null default 'phone_verification',
+  code_hash   text not null,
+  destination text not null,
+  expires_at  timestamptz not null,
+  attempts    integer not null default 0,
+  consumed_at timestamptz,
+  -- Set when the attempt limit is hit; verification refuses until it passes.
+  locked_until timestamptz,
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists otp_codes_lookup_idx
+  on otp_codes (org_id, user_id, purpose, created_at desc);
+
 -- Device binding. A proxy check-in should require physically handing over a
 -- phone (spec §7), so re-registration is gated on HR approval rather than
 -- happening silently on next login.
@@ -487,7 +510,7 @@ declare
   t text;
   tenant_tables text[] := array[
     'users', 'locations', 'departments', 'work_schedules', 'employees',
-    'magic_link_tokens', 'refresh_tokens', 'devices',
+    'magic_link_tokens', 'refresh_tokens', 'devices', 'otp_codes',
     'checkin_codes', 'attendance_records', 'attendance_disputes',
     'leave_types', 'leave_balances', 'leave_balance_adjustments',
     'leave_requests', 'coverage_rules',
@@ -566,6 +589,27 @@ language sql stable security definer set search_path = public as $$
   from refresh_tokens where token_hash = p_token_hash limit 1
 $$;
 
+-- Invite lookup for the sign-up flow.
+--
+-- NOTE ON ENUMERATION. This deliberately confirms whether an address belongs to
+-- an employee, which `auth_lookup_user` never exposes to a caller. That is a
+-- product decision, not an oversight: the sign-up screen has to be able to say
+-- "we can't find an invite for that email", because the alternative is a new
+-- joiner staring at a screen that silently does nothing.
+--
+-- The cost is a staff-directory oracle for anyone who can guess addresses. It is
+-- mitigated by rate limiting at the route, and by returning only the org name
+-- and a masked phone tail — never a name, a role, or the full number.
+create or replace function auth_lookup_invite(p_email text)
+returns table (org_id uuid, org_name text, email text, phone text, employee_status text)
+language sql stable security definer set search_path = public as $$
+  select o.id, o.name, e.email, e.phone, e.status
+  from employees e
+  join organisations o on o.id = e.org_id
+  where e.email = lower(trim(p_email))
+  limit 1
+$$;
+
 -- Nightly jobs iterate orgs, then do their real work inside a tenant context so
 -- the policies are still exercised on every row they touch.
 create or replace function list_org_ids()
@@ -577,9 +621,11 @@ $$;
 revoke all on function auth_lookup_user(text) from public;
 revoke all on function auth_lookup_magic_link(text) from public;
 revoke all on function auth_lookup_refresh_token(text) from public;
+revoke all on function auth_lookup_invite(text) from public;
 revoke all on function list_org_ids() from public;
 
 grant execute on function auth_lookup_user(text) to quanti_app;
 grant execute on function auth_lookup_magic_link(text) to quanti_app;
 grant execute on function auth_lookup_refresh_token(text) to quanti_app;
+grant execute on function auth_lookup_invite(text) to quanti_app;
 grant execute on function list_org_ids() to quanti_app;
