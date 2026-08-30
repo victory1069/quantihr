@@ -94,8 +94,24 @@ const FAMILY = Platform.select({
   default: 'sans-serif',
 })
 
+/**
+ * Every figure in the product is set in mono: balances, money, timestamps,
+ * countdowns, "12 of 12".
+ *
+ * Two reasons, both practical. Tabular figures align down a column, so a list
+ * of payslip amounts can be scanned rather than read. And mono visually marks
+ * a value as *recorded data* rather than prose — which matters in a product
+ * whose numbers end up in disciplinary and payroll decisions.
+ */
+const MONO = Platform.select({
+  web: "'Space Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+  ios: 'Menlo',
+  default: 'monospace',
+})
+
 export const font = {
   family: FAMILY,
+  mono: MONO,
   size: { xs: 12, sm: 13, md: 15, lg: 18, xl: 22, xxl: 30, display: 44, hero: 56 },
   weight: {
     regular: '400',
@@ -104,7 +120,7 @@ export const font = {
     bold: '700',
   },
   /** Space Grotesk is set tight; matching that keeps the fallback on-brand. */
-  tracking: { tight: -1.2, snug: -0.4, normal: 0, wide: 0.6 },
+  tracking: { tight: -1.2, snug: -0.4, normal: 0, wide: 0.6, label: 1.6 },
 } as const
 
 /** Glow rather than drop-shadow — a dark ground swallows conventional shadows. */

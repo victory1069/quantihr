@@ -1,20 +1,41 @@
 /**
- * Home (spec §5).
+ * Home — screen E1.
  *
- * "Hydrates from cache instantly, revalidates in background. Never shows a
- * full-screen spinner." Every block below renders from whatever the cache has
- * and degrades to a skeleton row, so an employee opening the app in a lift sees
- * their balance rather than a loading state.
+ * Order is the argument: leave and pay first, check-in second, open items
+ * third, activity last. This app watches people, and the spec's rule is that
+ * what an employee *gets* leads over what the employer *takes*. Putting the
+ * check-in prompt above the balances would invert that on the one screen
+ * everyone sees.
+ *
+ * Everything renders from cache with a skeleton fallback — never a full-screen
+ * spinner (spec §5).
  */
 
 import { useMemo } from 'react'
-import { RefreshControl, StyleSheet, Text, View } from 'react-native'
+import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { Badge, Button, Card, Divider, EmptyState, Screen, SectionTitle, Skeleton } from '../src/ui/components'
-import { colour, font, space, statusColour, statusLabel } from '../src/ui/theme'
-import { useAttendanceStatus, useBalances, useLeaveRequests, useMe } from '../src/api/queries'
+import {
+  Appear,
+  Button,
+  Card,
+  Divider,
+  EmptyState,
+  Screen,
+  Skeleton,
+} from '../src/ui/components'
+import { Figure, Label, Stat, StatRow } from '../src/ui/primitives'
+import { Icon } from '../src/ui/Icon'
+import { colour, font, radius, space, statusLabel } from '../src/ui/theme'
+import {
+  useAttendanceStatus,
+  useBalances,
+  useLeaveRequests,
+  useMe,
+  usePayslips,
+} from '../src/api/queries'
 import { useSession } from '../src/store/session'
+import { formatNairaCompact } from '../src/lib/money'
 
 export default function Home() {
   const router = useRouter()
@@ -24,9 +45,9 @@ export default function Home() {
   const status = useAttendanceStatus()
   const balances = useBalances()
   const requests = useLeaveRequests('pending')
+  const payslips = usePayslips()
   const deviceReview = useSession((s) => s.deviceReviewRequired)
 
-  // Keep the store in sync for the tab bar and the biometric gate.
   if (me.data && useSession.getState().me?.employee.id !== me.data.employee.id) {
     useSession.getState().setMe(me.data)
   }
@@ -35,13 +56,27 @@ export default function Home() {
     me.isRefetching || status.isRefetching || balances.isRefetching || requests.isRefetching
 
   const primary = usePrimaryAction(status.data)
-  const firstName = me.data?.employee.firstName
+  const first = me.data?.employee.firstName
 
-  const headline = useMemo(() => {
+  const greeting = useMemo(() => {
     const hour = new Date().getHours()
-    const part = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening'
-    return firstName ? `${part}, ${firstName}` : part
-  }, [firstName])
+    const part = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening'
+    return first ? `${part}, ${first}` : part
+  }, [first])
+
+  const today = useMemo(
+    () =>
+      new Date().toLocaleDateString(undefined, {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+      }),
+    [],
+  )
+
+  const annual = balances.data?.balances[0]
+  const latestPayslip = payslips.data?.payslips[0]
+  const pendingDays = balances.data?.balances.reduce((sum, b) => sum + b.pending, 0) ?? 0
 
   return (
     <Screen
@@ -53,163 +88,233 @@ export default function Home() {
         />
       }
     >
-      <View style={styles.header}>
-        <Text style={styles.greeting}>{headline}</Text>
-        {me.data ? (
-          <Text style={styles.sub}>
-            {me.data.employee.jobTitle ?? 'Employee'}
-            {me.data.employee.departmentName ? ` · ${me.data.employee.departmentName}` : ''}
-          </Text>
-        ) : (
-          <Skeleton height={14} width={180} />
-        )}
-      </View>
+      <Appear index={0}>
+        <View style={styles.header}>
+          <Text style={styles.date}>{today}</Text>
+          <Text style={styles.greeting}>{greeting}</Text>
+        </View>
+      </Appear>
+
+      {/* Leave and pay lead, per spec §3 "give before you take". */}
+      <Appear index={1}>
+        <StatRow>
+          {balances.data && annual ? (
+            <Stat
+              label="Leave left"
+              value={annual.available}
+              caption={pendingDays > 0 ? `${pendingDays} days pending` : 'none pending'}
+            />
+          ) : (
+            <Card style={styles.statSkeleton}>
+              <Skeleton height={14} width={72} />
+              <Skeleton height={28} width={60} />
+            </Card>
+          )}
+
+          {payslips.data ? (
+            latestPayslip ? (
+              <Stat
+                label={`Paid ${formatDay(latestPayslip.payDate)}`}
+                value={formatNairaCompact(latestPayslip.netPay)}
+                caption="net"
+              />
+            ) : (
+              <Stat label="Pay" value="—" caption="no payslip yet" />
+            )
+          ) : (
+            <Card style={styles.statSkeleton}>
+              <Skeleton height={14} width={72} />
+              <Skeleton height={28} width={80} />
+            </Card>
+          )}
+        </StatRow>
+      </Appear>
 
       {deviceReview ? (
-        <Card style={styles.warnCard}>
-          <Text style={styles.warnTitle}>New device awaiting HR approval</Text>
-          <Text style={styles.warnBody}>
-            You can use the app, but check-ins from this device will be flagged for review until
-            HR approves it.
-          </Text>
-        </Card>
+        <Appear index={2}>
+          <Card tone="warning">
+            <Text style={styles.warnTitle}>New device awaiting HR approval</Text>
+            <Text style={styles.warnBody}>
+              You can use the app, but check-ins from this device are flagged for review until
+              HR approves it.
+            </Text>
+          </Card>
+        </Appear>
       ) : null}
 
-      {/* Today */}
-      <Card>
-        <View style={styles.todayRow}>
-          <View style={styles.todayText}>
-            <Text style={styles.cardLabel}>Today</Text>
-            {status.data ? (
-              <>
-                <Text style={styles.todayHeadline}>{primary.headline}</Text>
-                <Text style={styles.todayDetail}>{primary.detail}</Text>
-              </>
-            ) : (
-              <>
-                <Skeleton height={22} width={160} />
-                <Skeleton height={14} width={220} />
-              </>
-            )}
+      {/* Check-in */}
+      <Appear index={3}>
+        {status.data ? (
+          <Card tone={primary.actionLabel ? 'primary' : 'default'}>
+            <Label tone={primary.actionLabel ? 'primary' : 'faint'}>{primary.eyebrow}</Label>
+            <Text style={styles.checkinBody}>{primary.detail}</Text>
+            {primary.actionLabel ? (
+              <Button label={primary.actionLabel} onPress={() => router.push('/checkin')} />
+            ) : null}
+          </Card>
+        ) : (
+          <Card>
+            <Skeleton height={14} width={160} />
+            <Skeleton height={20} />
+            <Skeleton height={52} />
+          </Card>
+        )}
+      </Appear>
+
+      {/* Anything needing the employee's response, in accent pink. */}
+      {requests.data && requests.data.requests.length > 0 ? (
+        <Appear index={4}>
+          <Card tone="danger" onPress={() => router.push('/leave')}>
+            <View style={styles.actionRow}>
+              <View style={styles.actionDot} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.actionTitle}>
+                  {requests.data.requests.length === 1
+                    ? 'A leave request is awaiting a decision'
+                    : `${requests.data.requests.length} leave requests awaiting a decision`}
+                </Text>
+                <Text style={styles.actionSub}>
+                  {requests.data.requests[0]!.start} → {requests.data.requests[0]!.end}
+                </Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </View>
+          </Card>
+        </Appear>
+      ) : null}
+
+      {/* Policy assistant entry point — spec §5.6 requires it reachable from
+          home, not buried in a tab. */}
+      <Appear index={5}>
+        <Card onPress={() => router.push('/ask')}>
+          <View style={styles.actionRow}>
+            <View style={styles.aiBadge}>
+              <Text style={styles.aiGlyph}>✦</Text>
+            </View>
+            <Text style={styles.askLabel}>Ask about a policy</Text>
+            <Text style={styles.chevron}>›</Text>
           </View>
-          {status.data?.record ? (
-            <Badge
-              label={statusLabel(status.data.record.status)}
-              tone={
-                status.data.record.status === 'late'
-                  ? 'warning'
-                  : status.data.record.status === 'rejected'
-                    ? 'danger'
-                    : 'success'
-              }
-            />
-          ) : null}
-        </View>
+        </Card>
+      </Appear>
 
-        {primary.actionLabel ? (
-          <Button label={primary.actionLabel} onPress={() => router.push('/checkin')} />
-        ) : null}
-      </Card>
+      {/* Recent activity */}
+      <Appear index={6}>
+        <Label>Recent</Label>
+      </Appear>
 
-      {/* Balances */}
-      <SectionTitle
-        action={<Text style={styles.link} onPress={() => router.push('/leave')}>See all</Text>}
-      >
-        Leave balance
-      </SectionTitle>
-
-      <Card>
-        {balances.data ? (
-          balances.data.balances.length > 0 ? (
-            balances.data.balances.map((b, i) => (
-              <View key={b.leaveTypeId}>
-                {i > 0 ? <Divider /> : null}
-                <View style={styles.balanceRow}>
-                  <View style={styles.balanceLabel}>
-                    <View style={[styles.swatch, { backgroundColor: b.colour }]} />
-                    <View>
-                      <Text style={styles.balanceName}>{b.leaveTypeName}</Text>
-                      {b.pending > 0 ? (
-                        <Text style={styles.balanceNote}>{b.pending} day(s) awaiting approval</Text>
-                      ) : b.carryoverExpiresOn && b.carriedOver > 0 ? (
-                        <Text style={styles.balanceNote}>
-                          {b.carriedOver} carried over, expires {b.carryoverExpiresOn}
-                        </Text>
-                      ) : null}
+      <Appear index={7}>
+        <View style={styles.recent}>
+          {requests.data && payslips.data ? (
+            recentItems(requests.data.requests, payslips.data.payslips).length > 0 ? (
+              recentItems(requests.data.requests, payslips.data.payslips).map((item, i, all) => (
+                <View key={item.key}>
+                  <Pressable
+                    onPress={() => router.push(item.href as never)}
+                    style={styles.recentRow}
+                    accessibilityRole="button"
+                  >
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={styles.recentTitle}>{item.title}</Text>
+                      {item.sub ? <Text style={styles.recentSub}>{item.sub}</Text> : null}
                     </View>
-                  </View>
-                  <Text style={styles.balanceValue}>
-                    {b.available}
-                    <Text style={styles.balanceUnit}> days</Text>
-                  </Text>
+                    {item.trailing}
+                  </Pressable>
+                  {i < all.length - 1 ? <Divider /> : null}
                 </View>
-              </View>
-            ))
+              ))
+            ) : (
+              <EmptyState
+                title="Nothing yet"
+                body="Leave requests and payslips will appear here."
+              />
+            )
           ) : (
-            <EmptyState title="No leave types configured yet" />
-          )
-        ) : (
-          <View style={{ gap: space.md }}>
-            <Skeleton height={20} />
-            <Skeleton height={20} />
-          </View>
-        )}
-
-        <Button
-          label="Request leave"
-          variant="secondary"
-          onPress={() => router.push('/leave/new')}
-        />
-      </Card>
-
-      {/* Pending items */}
-      <SectionTitle>Awaiting a decision</SectionTitle>
-      <Card>
-        {requests.data ? (
-          requests.data.requests.length > 0 ? (
-            requests.data.requests.map((r, i) => (
-              <View key={r.id}>
-                {i > 0 ? <Divider /> : null}
-                <View style={styles.requestRow}>
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text style={styles.requestTitle}>{r.leaveTypeName}</Text>
-                    <Text style={styles.requestDates}>
-                      {r.start} → {r.end} · {r.daysCount} day(s)
-                    </Text>
-                  </View>
-                  <Badge label={statusLabel(r.status)} tone="pending" dot={statusColour(r.status)} />
-                </View>
-              </View>
-            ))
-          ) : (
-            <EmptyState
-              title="Nothing pending"
-              body="Requests you submit will appear here until your manager decides."
-            />
-          )
-        ) : (
-          <Skeleton height={40} />
-        )}
-      </Card>
+            <Skeleton height={64} />
+          )}
+        </View>
+      </Appear>
     </Screen>
   )
 }
 
+interface RecentItem {
+  key: string
+  title: string
+  sub?: string
+  href: string
+  trailing: React.ReactNode
+}
+
+function recentItems(
+  requests: { id: string; leaveTypeName: string; start: string; end: string; status: string }[],
+  payslips: { id: string; netPay: number; periodStart: string }[],
+): RecentItem[] {
+  const leave: RecentItem[] = requests.slice(0, 2).map((r) => ({
+    key: `leave-${r.id}`,
+    title: `${r.leaveTypeName} · ${formatDay(r.start)}–${formatDay(r.end)}`,
+    href: `/leave/${r.id}`,
+    trailing: (
+      <Text
+        style={[
+          styles.recentTrailing,
+          {
+            color:
+              r.status === 'approved'
+                ? colour.success
+                : r.status === 'declined'
+                  ? colour.danger
+                  : colour.warning,
+          },
+        ]}
+      >
+        {statusLabel(r.status)}
+      </Text>
+    ),
+  }))
+
+  const pay: RecentItem[] = payslips.slice(0, 2).map((p) => ({
+    key: `pay-${p.id}`,
+    title: `${monthName(p.periodStart)} payslip`,
+    href: `/payslips/${p.id}`,
+    trailing: (
+      <Figure size="sm" tone="muted">
+        {formatNairaCompact(p.netPay)}
+      </Figure>
+    ),
+  }))
+
+  return [...leave, ...pay].slice(0, 4)
+}
+
+function formatDay(iso: string): string {
+  const [y, m, d] = iso.split('-').map(Number)
+  return new Date(Date.UTC(y ?? 2000, (m ?? 1) - 1, d ?? 1)).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+  })
+}
+
+function monthName(iso: string): string {
+  const [y, m] = iso.split('-').map(Number)
+  return new Date(Date.UTC(y ?? 2000, (m ?? 1) - 1, 1)).toLocaleDateString(undefined, {
+    month: 'long',
+  })
+}
+
 interface PrimaryAction {
-  headline: string
+  eyebrow: string
   detail: string
   actionLabel: string | null
 }
 
-/** One primary action, chosen from today's attendance state (spec §5). */
+/** One contextual action, derived from today's attendance state. */
 function usePrimaryAction(
   status: ReturnType<typeof useAttendanceStatus>['data'],
 ): PrimaryAction {
-  if (!status) {
-    return { headline: '', detail: '', actionLabel: null }
-  }
+  if (!status) return { eyebrow: '', detail: '', actionLabel: null }
 
   const record = status.record
+  const where = status.location?.name ?? 'your office'
 
   if (record && (record.status === 'present' || record.status === 'late')) {
     const at = record.checkedInAt
@@ -219,10 +324,10 @@ function usePrimaryAction(
         })
       : ''
     return {
-      headline: `Checked in at ${at}`,
+      eyebrow: `CHECKED IN · ${at}`,
       detail:
         record.minutesLate > 0
-          ? `${record.minutesLate} minute(s) after your ${status.schedule.startTime} start.`
+          ? `${record.minutesLate} minutes after your ${status.schedule.startTime} start.`
           : `On time against your ${status.schedule.startTime} start.`,
       actionLabel: null,
     }
@@ -230,8 +335,8 @@ function usePrimaryAction(
 
   if (record?.status === 'pending_review') {
     return {
-      headline: 'Check-in under review',
-      detail: 'This device is not your registered one, so HR will review the record.',
+      eyebrow: 'CHECK-IN UNDER REVIEW',
+      detail: 'This is not your registered device, so HR will review the record.',
       actionLabel: null,
     }
   }
@@ -239,77 +344,111 @@ function usePrimaryAction(
   switch (status.window.reason) {
     case 'open':
       return {
-        headline: 'Ready to check in',
-        detail: `Check-in closes at ${status.window.closesAt}.`,
-        actionLabel: 'Check in now',
+        eyebrow: `CHECK-IN OPEN · CLOSES ${status.window.closesAt}`,
+        detail: `${where} · tap to record today`,
+        actionLabel: 'Check in',
       }
     case 'too_early':
       return {
-        headline: `Check-in opens at ${status.window.opensAt}`,
+        eyebrow: `CHECK-IN OPENS ${status.window.opensAt}`,
         detail: `That is in ${formatMinutes(status.window.minutesUntilOpen)}.`,
         actionLabel: null,
       }
     case 'too_late':
       return {
-        headline: 'Check-in has closed',
+        eyebrow: 'CHECK-IN CLOSED',
         detail: `The window closed at ${status.window.closesAt}. Speak to your manager.`,
         actionLabel: null,
       }
-    case 'not_a_working_day':
     default:
       return {
-        headline: 'Not a working day',
-        detail: 'Enjoy it. Check-in resumes on your next scheduled day.',
+        eyebrow: 'NOT A WORKING DAY',
+        detail: 'Check-in resumes on your next scheduled day.',
         actionLabel: null,
       }
   }
 }
 
 function formatMinutes(total: number): string {
-  if (total < 60) return `${total} minute(s)`
+  if (total < 60) return `${total} minutes`
   const hours = Math.floor(total / 60)
   const minutes = total % 60
-  return minutes === 0 ? `${hours} hour(s)` : `${hours}h ${minutes}m`
+  return minutes === 0 ? `${hours} hours` : `${hours}h ${minutes}m`
 }
 
 const styles = StyleSheet.create({
-  header: { paddingTop: space.lg, paddingBottom: space.sm, gap: space.xs },
-  greeting: { fontSize: font.size.xxl, fontWeight: font.weight.bold, color: colour.text },
-  sub: { fontSize: font.size.md, color: colour.textMuted },
-
-  cardLabel: {
-    fontSize: font.size.xs,
-    fontWeight: font.weight.semibold,
-    color: colour.textFaint,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
+  header: { paddingTop: space.sm, gap: 2 },
+  date: { fontSize: font.size.md, color: colour.textMuted, fontFamily: font.family },
+  greeting: {
+    fontSize: font.size.xxl,
+    fontWeight: font.weight.bold,
+    color: colour.text,
+    letterSpacing: font.tracking.tight,
+    fontFamily: font.family,
   },
-  todayRow: { flexDirection: 'row', justifyContent: 'space-between', gap: space.md },
-  todayText: { flex: 1, gap: space.xs },
-  todayHeadline: { fontSize: font.size.xl, fontWeight: font.weight.semibold, color: colour.text },
-  todayDetail: { fontSize: font.size.md, color: colour.textMuted, lineHeight: 21 },
 
-  warnCard: { backgroundColor: colour.warningSoft, borderColor: '#FDE68A' },
-  warnTitle: { fontSize: font.size.md, fontWeight: font.weight.semibold, color: colour.warning },
-  warnBody: { fontSize: font.size.sm, color: colour.warning, lineHeight: 19 },
+  statSkeleton: { flex: 1, gap: space.sm },
 
-  balanceRow: {
+  checkinBody: {
+    fontSize: font.size.md,
+    color: colour.text,
+    lineHeight: 22,
+    fontFamily: font.family,
+  },
+
+  warnTitle: {
+    fontSize: font.size.md,
+    fontWeight: font.weight.semibold,
+    color: colour.warning,
+    fontFamily: font.family,
+  },
+  warnBody: {
+    fontSize: font.size.sm,
+    color: colour.warning,
+    lineHeight: 20,
+    fontFamily: font.family,
+  },
+
+  actionRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  actionDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colour.accent },
+  actionTitle: {
+    fontSize: font.size.md,
+    fontWeight: font.weight.semibold,
+    color: colour.text,
+    fontFamily: font.family,
+  },
+  actionSub: { fontSize: font.size.sm, color: colour.textMuted, fontFamily: font.family },
+  chevron: { fontSize: 22, color: colour.textFaint },
+
+  aiBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: radius.sm,
+    backgroundColor: colour.pending,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiGlyph: { color: colour.text, fontSize: 16 },
+  askLabel: {
+    flex: 1,
+    fontSize: font.size.lg,
+    fontWeight: font.weight.semibold,
+    color: colour.text,
+    fontFamily: font.family,
+  },
+
+  recent: { gap: 0 },
+  recentRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: space.sm,
     gap: space.md,
+    paddingVertical: space.md,
   },
-  balanceLabel: { flexDirection: 'row', alignItems: 'center', gap: space.sm, flex: 1 },
-  swatch: { width: 10, height: 10, borderRadius: 5 },
-  balanceName: { fontSize: font.size.md, color: colour.text, fontWeight: font.weight.medium },
-  balanceNote: { fontSize: font.size.xs, color: colour.textMuted, marginTop: 2 },
-  balanceValue: { fontSize: font.size.xl, fontWeight: font.weight.bold, color: colour.text },
-  balanceUnit: { fontSize: font.size.sm, fontWeight: font.weight.regular, color: colour.textMuted },
-
-  requestRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm },
-  requestTitle: { fontSize: font.size.md, fontWeight: font.weight.medium, color: colour.text },
-  requestDates: { fontSize: font.size.sm, color: colour.textMuted },
-
-  link: { fontSize: font.size.sm, color: colour.primary, fontWeight: font.weight.semibold },
+  recentTitle: { fontSize: font.size.md, color: colour.text, fontFamily: font.family },
+  recentSub: { fontSize: font.size.sm, color: colour.textMuted, fontFamily: font.family },
+  recentTrailing: {
+    fontSize: font.size.md,
+    fontWeight: font.weight.bold,
+    fontFamily: font.family,
+  },
 })

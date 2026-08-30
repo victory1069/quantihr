@@ -7,7 +7,7 @@
  * a settings glyph.
  */
 
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter, usePathname } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -64,53 +64,40 @@ export function AppHeader() {
 }
 
 /**
- * Manager-mode switch.
+ * Manager-mode pill.
  *
- * A segmented control rather than a toggle: a toggle makes you remember which
- * way is which, a segment shows you both states and which one you are in.
+ * A status indicator that is also the switch. When manager mode is on it reads
+ * `● MANAGER MODE` in cyan; off, it is a quiet `Manager view` affordance. This
+ * replaced a segmented control — a manager needs to *know* which mode they are
+ * in far more often than they need to see both options, and mistaking your own
+ * queue for a colleague's is the error worth designing against.
  */
 function ModeSwitch({ on, onChange }: { on: boolean; onChange: (next: boolean) => void }) {
-  const slide = useRef(new Animated.Value(on ? 1 : 0)).current
+  const pulse = useRef(new Animated.Value(0)).current
 
-  const move = (next: boolean) => {
-    Animated.timing(slide, {
-      toValue: next ? 1 : 0,
-      duration: 200,
+  useEffect(() => {
+    Animated.timing(pulse, {
+      toValue: on ? 1 : 0,
+      duration: 220,
       easing: Easing.out(Easing.cubic),
       useNativeDriver: true,
     }).start()
-    onChange(next)
-  }
+  }, [on, pulse])
 
   return (
-    <View style={styles.switch} accessibilityRole="tablist">
-      <Animated.View
-        style={[
-          styles.switchThumb,
-          {
-            transform: [
-              { translateX: slide.interpolate({ inputRange: [0, 1], outputRange: [0, 52] }) },
-            ],
-          },
-        ]}
-      />
-      {(['Me', 'Team'] as const).map((label, i) => {
-        const selected = on === (i === 1)
-        return (
-          <Pressable
-            key={label}
-            onPress={() => move(i === 1)}
-            accessibilityRole="tab"
-            accessibilityState={{ selected }}
-            style={styles.switchOption}
-          >
-            <Text style={[styles.switchLabel, selected && styles.switchLabelActive]}>
-              {label}
-            </Text>
-          </Pressable>
-        )
-      })}
-    </View>
+    <Pressable
+      onPress={() => onChange(!on)}
+      accessibilityRole="switch"
+      accessibilityState={{ checked: on }}
+      accessibilityLabel={on ? 'Switch to your own view' : 'Switch to manager view'}
+      style={[styles.pill, on && styles.pillOn]}
+      hitSlop={6}
+    >
+      {on ? <View style={styles.pillDot} /> : null}
+      <Text style={[styles.pillLabel, on && styles.pillLabelOn]}>
+        {on ? 'MANAGER MODE' : 'Manager view'}
+      </Text>
+    </Pressable>
   )
 }
 
@@ -149,36 +136,29 @@ const styles = StyleSheet.create({
     letterSpacing: font.tracking.wide,
   },
 
-  switch: {
+  pill: {
     flexDirection: 'row',
-    backgroundColor: colour.surfaceSunken,
+    alignItems: 'center',
+    gap: space.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: 7,
     borderRadius: radius.pill,
-    padding: 3,
     borderWidth: 1,
     borderColor: colour.border,
+    backgroundColor: colour.surfaceSunken,
   },
-  switchThumb: {
-    position: 'absolute',
-    top: 3,
-    left: 3,
-    width: 52,
-    height: 28,
-    borderRadius: radius.pill,
-    backgroundColor: colour.primarySoft,
-    borderWidth: 1,
-    borderColor: colour.primaryBorder,
-  },
-  switchOption: {
-    width: 52,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  switchLabel: {
+  pillOn: { borderColor: colour.primaryBorder, backgroundColor: colour.primarySoft },
+  pillDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: colour.primary },
+  pillLabel: {
     fontSize: font.size.xs,
-    color: colour.textFaint,
+    color: colour.textMuted,
     fontFamily: font.family,
     fontWeight: font.weight.medium,
   },
-  switchLabelActive: { color: colour.primary, fontWeight: font.weight.semibold },
+  pillLabelOn: {
+    color: colour.primary,
+    fontFamily: font.mono,
+    letterSpacing: font.tracking.label,
+    fontWeight: font.weight.bold,
+  },
 })

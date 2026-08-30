@@ -31,18 +31,28 @@ interface Tab {
   match: (path: string) => boolean
 }
 
+/**
+ * Home · Leave · Pay · Me.
+ *
+ * `Me` is the personal hub — documents, letters, profile, settings — rather
+ * than a Documents tab. Documents alone did not earn a quarter of the bar, and
+ * "Me" is where people look for their own things.
+ *
+ * Manager mode swaps Leave for Team and keeps everything else, so the two modes
+ * differ by exactly one tab and nothing moves under the thumb.
+ */
 const EMPLOYEE_TABS: Tab[] = [
   { href: '/', label: 'Home', icon: 'home', match: (p) => p === '/' },
   { href: '/leave', label: 'Leave', icon: 'leave', match: (p) => p.startsWith('/leave') },
   { href: '/payslips', label: 'Pay', icon: 'payroll', match: (p) => p.startsWith('/payslips') },
-  { href: '/documents', label: 'Documents', icon: 'documents', match: (p) => p.startsWith('/documents') },
+  { href: '/me', label: 'Me', icon: 'profile', match: (p) => p.startsWith('/me') || p.startsWith('/documents') || p.startsWith('/profile') },
 ]
 
 const MANAGER_TABS: Tab[] = [
-  { href: '/manage/approvals', label: 'Approvals', icon: 'approvals', match: (p) => p.startsWith('/manage/approvals') },
-  { href: '/manage/calendar', label: 'Calendar', icon: 'calendar', match: (p) => p.startsWith('/manage/calendar') },
-  { href: '/manage/attendance', label: 'Team', icon: 'insights', match: (p) => p.startsWith('/manage/attendance') },
-  { href: '/', label: 'My view', icon: 'home', match: (p) => p === '/' },
+  { href: '/', label: 'Home', icon: 'home', match: (p) => p === '/' },
+  { href: '/manage/approvals', label: 'Team', icon: 'approvals', match: (p) => p.startsWith('/manage') },
+  { href: '/payslips', label: 'Pay', icon: 'payroll', match: (p) => p.startsWith('/payslips') },
+  { href: '/me', label: 'Me', icon: 'profile', match: (p) => p.startsWith('/me') || p.startsWith('/documents') || p.startsWith('/profile') },
 ]
 
 export function TabBar() {
@@ -97,7 +107,7 @@ export function TabBar() {
 
         {tabs.map((tab) => {
           const active = tab.match(pathname)
-          const badge = tab.href === '/manage/approvals' ? waiting : 0
+          const badge = tab.href === '/manage/approvals' || (tab.label === 'Team') ? waiting : 0
           return (
             <TabButton
               key={tab.href}
