@@ -90,7 +90,14 @@ export default function RootLayout() {
    */
   const root = segments[0] as string | undefined
   const onAuthRoute = root === 'sign-in' || root === 'auth'
-  const fullScreen = onAuthRoute || root === 'welcome'
+  // Onboarding, unlock and recovery own the whole screen: a half-visible tab
+  // bar behind a setup or lockout flow invites tapping past it.
+  const fullScreen =
+    onAuthRoute ||
+    root === 'welcome' ||
+    root === 'onboarding' ||
+    root === 'unlock' ||
+    root === 'recover'
 
   useEffect(() => {
     if (!bootstrapped) return
