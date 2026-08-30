@@ -98,6 +98,24 @@ export async function getDeviceId(): Promise<string> {
   return id
 }
 
+const ONBOARDED_KEY = 'quanti.onboarded'
+
+/**
+ * Whether this device has been through first-run.
+ *
+ * Stored per device rather than per user, because the thing onboarding explains
+ * — that this handset is now the employee's registered device — is a property
+ * of the device. Signing out does not clear it; re-installing does, which is
+ * correct, since a fresh install re-registers.
+ */
+export async function hasOnboarded(): Promise<boolean> {
+  return (await secure.get(ONBOARDED_KEY)) === 'true'
+}
+
+export async function setOnboarded(): Promise<void> {
+  await secure.set(ONBOARDED_KEY, 'true')
+}
+
 export type SessionStatus = 'loading' | 'authenticated' | 'signed-out'
 
 interface SessionState {

@@ -83,9 +83,17 @@ export default function RootLayout() {
     }
   }, [])
 
+  /**
+   * Routes that own the whole screen: sign-in, the link exchange, and first-run.
+   * Onboarding counts as authenticated but must not show the tab bar — a
+   * half-visible shell behind a setup flow invites tapping past it.
+   */
+  const root = segments[0] as string | undefined
+  const onAuthRoute = root === 'sign-in' || root === 'auth'
+  const fullScreen = onAuthRoute || root === 'welcome'
+
   useEffect(() => {
     if (!bootstrapped) return
-    const onAuthRoute = segments[0] === 'sign-in' || segments[0] === 'auth'
 
     if (status === 'signed-out' && !onAuthRoute) {
       redirected.current = true
@@ -94,14 +102,14 @@ export default function RootLayout() {
       redirected.current = false
       router.replace('/')
     }
-  }, [status, segments, bootstrapped, router])
+  }, [status, onAuthRoute, bootstrapped, router])
 
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <StatusBar style="light" />
         <View style={styles.root}>
-          {status === 'authenticated' ? <AppHeader /> : null}
+          {status === 'authenticated' && !fullScreen ? <AppHeader /> : null}
           <Stack
             screenOptions={{
               headerShown: false,
@@ -110,7 +118,7 @@ export default function RootLayout() {
               animationDuration: 180,
             }}
           />
-          {status === 'authenticated' ? (
+          {status === 'authenticated' && !fullScreen ? (
             <>
               <SyncBanner />
               <TabBar />

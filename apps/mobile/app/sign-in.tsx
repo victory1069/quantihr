@@ -1,17 +1,33 @@
 /**
- * Magic-link sign-in (spec §9). No passwords.
+ * Sign in — magic link, no passwords (spec §12).
  *
- * In development the API returns the link in the response so the web preview is
- * usable without an email provider; the button below only appears when that
- * field is present, which it never is in production.
+ * The design problem here is set by "assume six sessions a year": this screen
+ * is most people's *first* screen every time, months apart, on a phone they may
+ * have changed. So there is exactly one field and one button, no password to
+ * have forgotten, and no account to have to remember creating.
+ *
+ * The response is identical whether or not the address is known — a different
+ * message would turn this into a way to enumerate who works at the company.
  */
 
-import { useState } from 'react'
-import { StyleSheet, Text, TextInput, View } from 'react-native'
+import { useEffect, useRef, useState } from 'react'
+import {
+  Animated,
+  Easing,
+  KeyboardAvoidingView,
+  Platform,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native'
 import { useRouter } from 'expo-router'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { API_BASE_URL } from '../src/api/client'
-import { Button, Card, ErrorNotice, Screen } from '../src/ui/components'
-import { colour, font, space } from '../src/ui/theme'
+import { Button, Card, ErrorNotice } from '../src/ui/components'
+import { Label } from '../src/ui/primitives'
+import { LogoMark } from '../src/ui/Logo'
+import { colour, font, MAX_CONTENT_WIDTH, radius, space } from '../src/ui/theme'
 
 interface MagicLinkResponse {
   sent: boolean
@@ -19,15 +35,31 @@ interface MagicLinkResponse {
   devLink?: string
 }
 
+type State = 'idle' | 'sending' | 'sent' | 'error'
+
 export default function SignIn() {
   const [email, setEmail] = useState('')
-  const [state, setState] = useState<'idle' | 'sending' | 'sent' | 'error'>('idle')
+  const [state, setState] = useState<State>('idle')
   const [message, setMessage] = useState('')
   const [devLink, setDevLink] = useState<string | null>(null)
   const router = useRouter()
+  const insets = useSafeAreaInsets()
+
+  const enter = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    Animated.timing(enter, {
+      toValue: 1,
+      duration: 420,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start()
+  }, [enter])
+
+  const valid = /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.trim())
 
   const submit = async () => {
-    if (!email.trim()) return
+    if (!valid) return
     setState('sending')
     setDevLink(null)
     try {
@@ -53,77 +85,158 @@ export default function SignIn() {
   }
 
   return (
-    <Screen>
-      <View style={styles.hero}>
-        <Text style={styles.brand}>Quanti HR</Text>
-        <Text style={styles.tagline}>Attendance, leave and your documents in one place.</Text>
-      </View>
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <Animated.View
+        style={[
+          styles.column,
+          {
+            paddingTop: insets.top + space.xxxl,
+            paddingBottom: insets.bottom + space.xl,
+            opacity: enter,
+            transform: [
+              { translateY: enter.interpolate({ inputRange: [0, 1], outputRange: [16, 0] }) },
+            ],
+          },
+        ]}
+      >
+        {/* Brand */}
+        <View style={styles.brand}>
+          <LogoMark size={56} />
+          <Text style={styles.wordmark}>Quanti</Text>
+          <Text style={styles.tagline}>
+            Your leave, your pay, your documents — in one place.
+          </Text>
+        </View>
 
-      <Card>
-        <Text style={styles.label}>Work email</Text>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          placeholder="you@company.com"
-          placeholderTextColor={colour.textFaint}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="email-address"
-          textContentType="emailAddress"
-          style={styles.input}
-          onSubmitEditing={submit}
-          accessibilityLabel="Work email address"
-        />
-
-        <Button
-          label={state === 'sent' ? 'Send another link' : 'Email me a sign-in link'}
-          onPress={submit}
-          loading={state === 'sending'}
-          disabled={!email.trim()}
-        />
+        <View style={styles.spacer} />
 
         {state === 'sent' ? (
-          <ErrorNotice
-            tone="info"
-            message={message}
-            action={
-              devLink ? (
-                <Button label="Open the link (development)" variant="secondary" onPress={openDevLink} />
-              ) : undefined
-            }
-          />
-        ) : null}
+          <Card>
+            <Label tone="primary">Check your email</Label>
+            <Text style={styles.sentTitle}>{email.trim()}</Text>
+            <Text style={styles.sentBody}>{message}</Text>
 
-        {state === 'error' ? <ErrorNotice message={message} /> : null}
-      </Card>
+            {devLink ? (
+              <>
+                {/* Development affordance. The API only returns this outside
+                    production, where env() refuses to boot with a dev secret. */}
+                <Button
+                  label="Open the link (development)"
+                  variant="secondary"
+                  onPress={openDevLink}
+                />
+              </>
+            ) : null}
 
-      <Text style={styles.footnote}>
-        We never ask for a password. Links expire after 15 minutes and can be used once.
-      </Text>
-    </Screen>
+            <Button
+              label="Use a different address"
+              variant="ghost"
+              onPress={() => {
+                setState('idle')
+                setDevLink(null)
+              }}
+            />
+          </Card>
+        ) : (
+          <Card>
+            <Label>Work email</Label>
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              placeholder="you@company.com"
+              placeholderTextColor={colour.textFaint}
+              autoCapitalize="none"
+              autoCorrect={false}
+              autoComplete="email"
+              keyboardType="email-address"
+              textContentType="emailAddress"
+              inputMode="email"
+              returnKeyType="go"
+              style={styles.input}
+              onSubmitEditing={submit}
+              accessibilityLabel="Work email address"
+              editable={state !== 'sending'}
+            />
+
+            <Button
+              label="Email me a sign-in link"
+              onPress={submit}
+              loading={state === 'sending'}
+              disabled={!valid}
+            />
+
+            {state === 'error' ? <ErrorNotice message={message} /> : null}
+          </Card>
+        )}
+
+        <Text style={styles.footnote}>
+          No passwords, ever. Links last 15 minutes and work once.
+        </Text>
+      </Animated.View>
+    </KeyboardAvoidingView>
   )
 }
 
 const styles = StyleSheet.create({
-  hero: { paddingVertical: space.xxl, gap: space.sm },
-  brand: { fontSize: font.size.xxl, fontWeight: font.weight.bold, color: colour.text },
-  tagline: { fontSize: font.size.md, color: colour.textMuted, lineHeight: 22 },
-  label: { fontSize: font.size.sm, fontWeight: font.weight.semibold, color: colour.textMuted },
+  root: { flex: 1, backgroundColor: colour.bg },
+  column: {
+    flex: 1,
+    width: '100%',
+    maxWidth: MAX_CONTENT_WIDTH,
+    alignSelf: 'center',
+    paddingHorizontal: space.lg,
+    gap: space.lg,
+  },
+  spacer: { flex: 1 },
+
+  brand: { gap: space.md },
+  wordmark: {
+    fontSize: font.size.display,
+    fontWeight: font.weight.bold,
+    color: colour.text,
+    letterSpacing: font.tracking.tight,
+    fontFamily: font.family,
+  },
+  tagline: {
+    fontSize: font.size.lg,
+    color: colour.textMuted,
+    lineHeight: 26,
+    fontFamily: font.family,
+  },
+
   input: {
     borderWidth: 1,
     borderColor: colour.borderStrong,
-    borderRadius: 12,
-    paddingHorizontal: space.md,
-    minHeight: 48,
-    fontSize: font.size.md,
+    borderRadius: radius.md,
+    paddingHorizontal: space.lg,
+    minHeight: 56,
+    fontSize: font.size.lg,
     color: colour.text,
-    backgroundColor: colour.surface,
+    backgroundColor: colour.surfaceSunken,
+    fontFamily: font.family,
   },
+
+  sentTitle: {
+    fontSize: font.size.lg,
+    color: colour.text,
+    fontWeight: font.weight.semibold,
+    fontFamily: font.mono,
+  },
+  sentBody: {
+    fontSize: font.size.md,
+    color: colour.textMuted,
+    lineHeight: 23,
+    fontFamily: font.family,
+  },
+
   footnote: {
     fontSize: font.size.sm,
     color: colour.textFaint,
     textAlign: 'center',
-    marginTop: space.md,
-    lineHeight: 19,
+    lineHeight: 20,
+    fontFamily: font.family,
   },
 })

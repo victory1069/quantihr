@@ -1,19 +1,25 @@
 /**
  * Magic-link exchange.
  *
- * Binds this device to the employee on first sign-in (spec §9). A second device
- * is registered but held for HR approval, and the employee is told so plainly
- * rather than discovering it when a check-in is flagged.
+ * Also the point at which this phone is bound to the employee for attendance
+ * verification (spec §9). The binding itself happens server-side; what matters
+ * here is that a first-time device is routed into onboarding so the employee is
+ * *told* it happened, rather than discovering it when a check-in is flagged.
  */
 
 import { useEffect, useRef, useState } from 'react'
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native'
-import { Platform } from 'react-native'
+import { Platform, StyleSheet, Text, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { API_BASE_URL } from '../../src/api/client'
-import { getDeviceId, setTokens, useSession } from '../../src/store/session'
-import { Button, Card, ErrorNotice, Screen } from '../../src/ui/components'
-import { colour, font, space } from '../../src/ui/theme'
+import {
+  getDeviceId,
+  hasOnboarded,
+  setTokens,
+  useSession,
+} from '../../src/store/session'
+import { Button, Card, ErrorNotice } from '../../src/ui/components'
+import { LogoLoader } from '../../src/ui/Logo'
+import { colour, font, MAX_CONTENT_WIDTH, space } from '../../src/ui/theme'
 
 export default function AuthCallback() {
   const { token } = useLocalSearchParams<{ token?: string }>()
@@ -52,50 +58,58 @@ export default function AuthCallback() {
         }
         await setTokens(session.accessToken, session.refreshToken)
         useSession.getState().setDeviceReviewRequired(session.deviceReviewRequired)
-        router.replace('/')
+
+        // First time on this device: explain the binding, biometrics and
+        // notifications before dropping them on Home.
+        router.replace((await hasOnboarded()) ? '/' : '/welcome')
       } catch {
         setError('Could not reach the server. Check your connection and try again.')
       }
     })()
   }, [token, router])
 
-  if (!token) {
+  if (!token || error) {
     return (
-      <Screen>
+      <View style={styles.centreColumn}>
         <Card>
-          <ErrorNotice message="That link is missing its sign-in token." />
-          <Button label="Back to sign in" onPress={() => router.replace('/sign-in')} />
-        </Card>
-      </Screen>
-    )
-  }
-
-  if (error) {
-    return (
-      <Screen>
-        <Card>
-          <ErrorNotice message={error} />
+          <ErrorNotice
+            message={error ?? 'That link is missing its sign-in token.'}
+          />
           <Button label="Request a new link" onPress={() => router.replace('/sign-in')} />
         </Card>
-      </Screen>
+      </View>
     )
   }
 
   return (
-    <View style={styles.center}>
-      <ActivityIndicator size="large" color={colour.primary} />
+    <View style={styles.centre}>
+      <LogoLoader size={88} />
       <Text style={styles.text}>Signing you in…</Text>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  center: {
+  centre: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: space.md,
+    gap: space.xl,
     backgroundColor: colour.bg,
   },
-  text: { fontSize: font.size.md, color: colour.textMuted },
+  centreColumn: {
+    flex: 1,
+    justifyContent: 'center',
+    backgroundColor: colour.bg,
+    paddingHorizontal: space.lg,
+    width: '100%',
+    maxWidth: MAX_CONTENT_WIDTH,
+    alignSelf: 'center',
+  },
+  text: {
+    fontSize: font.size.md,
+    color: colour.textMuted,
+    fontFamily: font.mono,
+    letterSpacing: font.tracking.wide,
+  },
 })
