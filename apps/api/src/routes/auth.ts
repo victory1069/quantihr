@@ -13,6 +13,7 @@ import { devices, employees, magicLinkTokens, refreshTokens, users } from '../db
 import type { Database } from '../db/client.js'
 import { audit } from '../lib/audit.js'
 import { requireAuth } from '../lib/context.js'
+import { magicLinkEmail, sendEmail } from '../lib/email.js'
 import { env } from '../lib/env.js'
 import {
   daysFromNow,
@@ -46,10 +47,26 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database): void {
       })
 
       const link = `${env().APP_URL}/auth/callback?token=${token}`
-      if (env().NODE_ENV === 'production') {
-        // TODO: hand off to the email provider.
-        request.log.info({ userId: found.userId }, 'magic link issued')
-      } else {
+
+      try {
+        const sent = await sendEmail({
+          ...magicLinkEmail(link, env().MAGIC_LINK_TTL_MINUTES),
+          to: email,
+        })
+        request.log.info(
+          { userId: found.userId, messageId: sent.messageId, driver: sent.driver },
+          'magic link sent',
+        )
+      } catch (error) {
+        // Deliberately swallowed. Returning an error here would make this
+        // endpoint answer differently for a known address than an unknown one,
+        // which is exactly the enumeration oracle the 200-always contract
+        // exists to prevent. The person gets no link either way; what stops
+        // that being silent is this log line and an alert on it.
+        request.log.error({ err: error, userId: found.userId }, 'magic link delivery failed')
+      }
+
+      if (env().NODE_ENV !== 'production') {
         request.log.info({ link }, 'magic link issued (development)')
         devLink = link
       }

@@ -20,6 +20,7 @@ import { employees, otpCodes, users } from '../db/schema.js'
 import type { Database } from '../db/client.js'
 import { audit } from '../lib/audit.js'
 import { env } from '../lib/env.js'
+import { sendSms, verificationSms } from '../lib/sms.js'
 import { expiryFromNow, hashToken } from '../lib/tokens.js'
 
 /** Attempts before an OTP is locked out, matching the copy on screen L6. */
@@ -207,10 +208,30 @@ export function registerInviteRoutes(app: FastifyInstance, db: Database): void {
       })
     })
 
-    if (env().NODE_ENV === 'production') {
-      // TODO: hand off to the SMS provider.
-      request.log.info({ userId: found.userId }, 'otp issued')
-    } else {
+    try {
+      const sent = await sendSms({
+        to: invite.phone,
+        body: verificationSms(code, Math.round(OTP_TTL_SECONDS / 60)),
+      })
+      request.log.info(
+        { userId: found.userId, messageId: sent.messageId, driver: sent.driver },
+        'otp sent',
+      )
+    } catch (error) {
+      request.log.error({ err: error, userId: found.userId }, 'otp delivery failed')
+      // Unlike the magic-link endpoint, this one may surface a real failure.
+      // It has already confirmed membership by returning a phone hint, so there
+      // is no enumeration left to protect — and someone stuck on the sign-up
+      // screen is better told to fall back to email than left waiting for a
+      // code that was never sent.
+      throw new ApiError(
+        ERROR_CODES.INTERNAL,
+        'We could not send the code to your phone. Try the email link instead.',
+        502,
+      )
+    }
+
+    if (env().NODE_ENV !== 'production') {
       request.log.info({ code }, 'otp issued (development)')
     }
 
