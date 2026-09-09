@@ -28,3 +28,20 @@ export type {
   UpsertLocation,
   BulkImportResponse,
 } from './admin.js'
+export * as meetings from './meetings.js'
+
+export type {
+  MeetingListItem,
+  MeetingDetail,
+  MeetingActionView,
+  MeetingParticipantView,
+  MeetingSummaryView,
+  MyActionItem,
+  SpeakerClip,
+  MeetingTypeView,
+  MeetEligibility,
+  MeetingSettings,
+  ExtractionOutput,
+  ExtractedAction,
+} from './meetings.js'
+export { DEFAULT_MEETING_SETTINGS } from './meetings.js'

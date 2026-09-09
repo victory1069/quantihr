@@ -55,7 +55,8 @@
           "faceIDPermission": "Quanti HR uses Face ID to unlock the app and your documents."
         }
       ],
-      "expo-status-bar"
+      "expo-status-bar",
+      "expo-audio"
     ],
     "experiments": {
       "typedRoutes": true

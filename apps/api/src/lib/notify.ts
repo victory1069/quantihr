@@ -21,6 +21,11 @@ export type NotificationEvent =
   | 'balance.expiring'
   | 'document.uploaded'
   | 'payslip.ready'
+  | 'meeting.review_ready'
+  | 'meeting.transcription_missing'
+  | 'meeting.action_assigned'
+  | 'meeting.dispute_raised'
+  | 'meeting.recording_started'
 
 export interface NotificationInput {
   orgId: string
@@ -43,6 +48,14 @@ const PREFERENCE_KEY: Record<NotificationEvent, string> = {
   // Payslip alerts are not opt-out: an employee must be told their pay is
   // ready. The figure itself never appears in the preview (spec §5.5).
   'payslip.ready': 'payslips',
+  'meeting.review_ready': 'meetings',
+  'meeting.transcription_missing': 'meetings',
+  'meeting.action_assigned': 'meetings',
+  'meeting.dispute_raised': 'meetings',
+  // Not opt-out. Someone in the room must be told that recording has started,
+  // and a preference that can suppress it would defeat the consent it exists
+  // to give (meeting spec §8.1).
+  'meeting.recording_started': 'recordingAlerts',
 }
 
 /**
@@ -54,6 +67,9 @@ const PREFERENCE_KEY: Record<NotificationEvent, string> = {
 export const NOTIFICATION_ACTIONS: Partial<Record<NotificationEvent, string[]>> = {
   'leave.submitted': ['approve', 'decline'],
   'leave.pending_48h': ['approve', 'decline'],
+  // Confirming the whole extracted set from the notification is what keeps
+  // host review at fifteen seconds rather than five minutes (meeting spec §9).
+  'meeting.review_ready': ['review'],
 }
 
 export async function queueNotification(tx: Tx, input: NotificationInput): Promise<void> {

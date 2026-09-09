@@ -435,6 +435,184 @@ export const auditLog = pgTable('audit_log', {
   createdAt: createdAt(),
 })
 
+export const meetingTypes = pgTable('meeting_types', {
+  id: id(),
+  orgId: orgId(),
+  name: text('name').notNull(),
+  captureEnabled: boolean('capture_enabled').notNull().default(true),
+  routeToHr: boolean('route_to_hr').notNull().default(false),
+  attendanceTracked: boolean('attendance_tracked').notNull().default(true),
+  retentionDays: integer('retention_days').notNull().default(90),
+  createdAt: createdAt(),
+})
+
+export const meetings = pgTable(
+  'meetings',
+  {
+    id: id(),
+    orgId: orgId(),
+    calendarEventId: text('calendar_event_id'),
+    googleConferenceRecordId: text('google_conference_record_id'),
+    title: text('title').notNull(),
+    meetingTypeId: uuid('meeting_type_id').references(() => meetingTypes.id, {
+      onDelete: 'set null',
+    }),
+    hostEmployeeId: uuid('host_employee_id').references(() => employees.id, {
+      onDelete: 'set null',
+    }),
+    scheduledStart: timestamp('scheduled_start', { withTimezone: true }).notNull(),
+    scheduledEnd: timestamp('scheduled_end', { withTimezone: true }).notNull(),
+    actualStart: timestamp('actual_start', { withTimezone: true }),
+    actualEnd: timestamp('actual_end', { withTimezone: true }),
+    source: text('source').notNull().default('google_meet'),
+    status: text('status').notNull().default('scheduled'),
+    locationId: uuid('location_id').references(() => locations.id, { onDelete: 'set null' }),
+    recordingS3Key: text('recording_s3_key'),
+    transcriptS3Key: text('transcript_s3_key'),
+    routeToHr: boolean('route_to_hr').notNull().default(false),
+    attendanceResolution: text('attendance_resolution'),
+    recordingStartedAt: timestamp('recording_started_at', { withTimezone: true }),
+    offRecordFlags: jsonb('off_record_flags').notNull().default([]),
+    reviewedAt: timestamp('reviewed_at', { withTimezone: true }),
+    reviewedBy: uuid('reviewed_by').references(() => users.id, { onDelete: 'set null' }),
+    ingestCompletedAt: timestamp('ingest_completed_at', { withTimezone: true }),
+    ingestError: text('ingest_error'),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    startIdx: index('meetings_org_start_idx').on(t.orgId, t.scheduledStart),
+    hostIdx: index('meetings_host_idx').on(t.orgId, t.hostEmployeeId, t.status),
+  }),
+)
+
+export const meetingParticipants = pgTable(
+  'meeting_participants',
+  {
+    id: id(),
+    orgId: orgId(),
+    meetingId: uuid('meeting_id').notNull().references(() => meetings.id, { onDelete: 'cascade' }),
+    employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+    inviteStatus: text('invite_status').notNull().default('needs_action'),
+    isOptional: boolean('is_optional').notNull().default(false),
+    expected: boolean('expected').notNull().default(true),
+    firstJoinAt: timestamp('first_join_at', { withTimezone: true }),
+    lastLeaveAt: timestamp('last_leave_at', { withTimezone: true }),
+    totalDurationSeconds: integer('total_duration_seconds').notNull().default(0),
+    attendanceStatus: text('attendance_status'),
+    minutesLate: integer('minutes_late').notNull().default(0),
+    source: text('source'),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    employeeIdx: index('meeting_participants_employee_idx').on(
+      t.orgId,
+      t.employeeId,
+      t.attendanceStatus,
+    ),
+    oneEach: uniqueIndex('meeting_participants_meeting_employee_key').on(
+      t.meetingId,
+      t.employeeId,
+    ),
+  }),
+)
+
+export const meetingTranscripts = pgTable('meeting_transcripts', {
+  id: id(),
+  orgId: orgId(),
+  meetingId: uuid('meeting_id').notNull().references(() => meetings.id, { onDelete: 'cascade' }),
+  language: text('language').notNull().default('en'),
+  durationSeconds: integer('duration_seconds').notNull().default(0),
+  segmentCount: integer('segment_count').notNull().default(0),
+  s3Key: text('s3_key').notNull(),
+  speakersResolved: boolean('speakers_resolved').notNull().default(false),
+  expiresAt: timestamp('expires_at', { withTimezone: true }),
+  createdAt: createdAt(),
+})
+
+export const meetingSummaries = pgTable('meeting_summaries', {
+  id: id(),
+  orgId: orgId(),
+  meetingId: uuid('meeting_id').notNull().references(() => meetings.id, { onDelete: 'cascade' }),
+  overview: text('overview').notNull(),
+  decisions: jsonb('decisions').notNull().default([]),
+  topics: jsonb('topics').notNull().default([]),
+  openQuestions: jsonb('open_questions').notNull().default([]),
+  model: text('model').notNull(),
+  inputTokens: integer('input_tokens').notNull().default(0),
+  outputTokens: integer('output_tokens').notNull().default(0),
+  tokensUsed: integer('tokens_used').notNull().default(0),
+  costUsd: numeric('cost_usd', { precision: 10, scale: 6 }).notNull().default('0'),
+  chunkCount: integer('chunk_count').notNull().default(1),
+  generatedAt: timestamp('generated_at', { withTimezone: true }).notNull().defaultNow(),
+})
+
+export const meetingActions = pgTable(
+  'meeting_actions',
+  {
+    id: id(),
+    orgId: orgId(),
+    meetingId: uuid('meeting_id').notNull().references(() => meetings.id, { onDelete: 'cascade' }),
+    description: text('description').notNull(),
+    ownerEmployeeId: uuid('owner_employee_id').references(() => employees.id, {
+      onDelete: 'set null',
+    }),
+    ownerStated: text('owner_stated'),
+    ownerConfidence: text('owner_confidence').notNull().default('unclear'),
+    dueDate: date('due_date'),
+    sourceQuote: text('source_quote').notNull(),
+    timestampMs: integer('timestamp_ms').notNull().default(0),
+    status: text('status').notNull().default('draft'),
+    confirmedBy: uuid('confirmed_by').references(() => users.id, { onDelete: 'set null' }),
+    confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    taskId: uuid('task_id'),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    ownerIdx: index('meeting_actions_owner_idx').on(t.orgId, t.ownerEmployeeId, t.status),
+    meetingIdx: index('meeting_actions_meeting_idx').on(t.orgId, t.meetingId),
+  }),
+)
+
+export const meetingDisputes = pgTable(
+  'meeting_disputes',
+  {
+    id: id(),
+    orgId: orgId(),
+    meetingId: uuid('meeting_id').notNull().references(() => meetings.id, { onDelete: 'cascade' }),
+    employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+    reason: text('reason').notNull(),
+    status: text('status').notNull().default('open'),
+    resolvedBy: uuid('resolved_by').references(() => users.id, { onDelete: 'set null' }),
+    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+    outcome: text('outcome'),
+    note: text('note'),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    meetingIdx: index('meeting_disputes_meeting_idx').on(t.orgId, t.meetingId, t.status),
+  }),
+)
+
+export const speakerMappings = pgTable(
+  'speaker_mappings',
+  {
+    id: id(),
+    orgId: orgId(),
+    meetingId: uuid('meeting_id').notNull().references(() => meetings.id, { onDelete: 'cascade' }),
+    diarisedSpeakerLabel: text('diarised_speaker_label').notNull(),
+    employeeId: uuid('employee_id').references(() => employees.id, { onDelete: 'set null' }),
+    method: text('method').notNull().default('host_tagged'),
+    confidence: numeric('confidence', { precision: 4, scale: 3 }).notNull().default('1'),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    oneEach: uniqueIndex('speaker_mappings_meeting_label_key').on(
+      t.meetingId,
+      t.diarisedSpeakerLabel,
+    ),
+  }),
+)
+
 export const schema = {
   organisations,
   users,
@@ -462,4 +640,12 @@ export const schema = {
   idempotencyKeys,
   notifications,
   auditLog,
+  meetingTypes,
+  meetings,
+  meetingParticipants,
+  meetingTranscripts,
+  meetingSummaries,
+  meetingActions,
+  meetingDisputes,
+  speakerMappings,
 }

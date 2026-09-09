@@ -10,3 +10,13 @@ export {
 } from './schemas/config.js'
 export type { JwtClaims, SessionResponse } from './schemas/auth.js'
 export type { Role } from './schemas/common.js'
+export {
+  DEFAULT_MEETING_SETTINGS,
+  type MeetingSettings,
+  type MeetingDetail,
+  type MeetingListItem,
+  type MeetingActionView,
+  type MyActionItem,
+  type ExtractionOutput,
+  type ExtractedAction,
+} from './schemas/meetings.js'

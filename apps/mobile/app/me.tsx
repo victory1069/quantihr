@@ -146,6 +146,18 @@ export default function Me() {
             detail="Your check-in record"
             onPress={() => router.push('/attendance')}
           />
+          <Divider />
+          <HubRow
+            label="Meetings"
+            detail="Summaries, attendance and what was decided"
+            onPress={() => router.push('/meetings')}
+          />
+          <Divider />
+          <HubRow
+            label="Tasks"
+            detail="What you took on in meetings"
+            onPress={() => router.push('/tasks')}
+          />
         </Card>
       </Appear>
 

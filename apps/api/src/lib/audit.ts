@@ -34,6 +34,10 @@ export type AuditAction =
   | 'payroll.run_created'
   | 'payroll.run_approved'
   | 'payroll.run_paid'
+  | 'meeting.created'
+  | 'meeting.recording_started'
+  | 'meeting.reviewed'
+  | 'meeting.dispute_resolved'
 
 export interface AuditEntry {
   orgId: string

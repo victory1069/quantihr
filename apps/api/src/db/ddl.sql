@@ -499,6 +499,190 @@ create table if not exists audit_log (
 create index if not exists audit_log_entity_idx on audit_log (org_id, entity_type, entity_id, created_at desc);
 
 -- ---------------------------------------------------------------------------
+-- Meeting assistant
+-- ---------------------------------------------------------------------------
+--
+-- Capture policy is per meeting type, never a global default (meeting spec
+-- §8.3). A team working candidly through a problem behaves differently when HR
+-- reads the transcript, so `route_to_hr` is configured per type and shown to
+-- attendees on the meeting record before it starts.
+
+create table if not exists meeting_types (
+  id                 uuid primary key default gen_random_uuid(),
+  org_id             uuid not null references organisations(id) on delete cascade,
+  name               text not null,
+  capture_enabled    boolean not null default true,
+  route_to_hr        boolean not null default false,
+  attendance_tracked boolean not null default true,
+  retention_days     integer not null default 90,
+  created_at         timestamptz not null default now()
+);
+
+create table if not exists meetings (
+  id                           uuid primary key default gen_random_uuid(),
+  org_id                       uuid not null references organisations(id) on delete cascade,
+  calendar_event_id            text,
+  google_conference_record_id  text,
+  title                        text not null,
+  meeting_type_id              uuid references meeting_types(id) on delete set null,
+  host_employee_id             uuid references employees(id) on delete set null,
+  scheduled_start              timestamptz not null,
+  scheduled_end                timestamptz not null,
+  actual_start                 timestamptz,
+  actual_end                   timestamptz,
+  source                       text not null default 'google_meet',
+  status                       text not null default 'scheduled',
+  location_id                  uuid references locations(id) on delete set null,
+  recording_s3_key             text,
+  transcript_s3_key            text,
+  route_to_hr                  boolean not null default false,
+  -- How the attendance set resolved: recorded, did_not_occur or too_short.
+  -- Stored rather than recomputed, so the record an employee disputed does not
+  -- change underneath the dispute.
+  attendance_resolution        text,
+  recording_started_at         timestamptz,
+  -- Millisecond offsets at which an attendee flagged the preceding two minutes
+  -- as off the record (§8.2). Held here because the flags are raised during the
+  -- meeting, before any transcript exists; they are applied at normalisation
+  -- and the flagged segments are never persisted.
+  off_record_flags             jsonb not null default '[]'::jsonb,
+  reviewed_at                  timestamptz,
+  reviewed_by                  uuid references users(id) on delete set null,
+  -- Drives the 30-day expiry alert (§2.4). Transcript entries served by the
+  -- Meet API are deleted 30 days after the conference ends, and those entries
+  -- are the speaker-attributed artifact we actually want.
+  ingest_completed_at          timestamptz,
+  ingest_error                 text,
+  created_at                   timestamptz not null default now()
+);
+
+create index if not exists meetings_org_start_idx on meetings (org_id, scheduled_start desc);
+create index if not exists meetings_host_idx on meetings (org_id, host_employee_id, status);
+create unique index if not exists meetings_conference_idx
+  on meetings (org_id, google_conference_record_id)
+  where google_conference_record_id is not null;
+
+create table if not exists meeting_participants (
+  id                     uuid primary key default gen_random_uuid(),
+  org_id                 uuid not null references organisations(id) on delete cascade,
+  meeting_id             uuid not null references meetings(id) on delete cascade,
+  employee_id            uuid not null references employees(id) on delete cascade,
+  invite_status          text not null default 'needs_action',
+  is_optional            boolean not null default false,
+  -- False for someone who attended without being invited, and for optional or
+  -- declined invitees. Never counted against an absence figure (§7.1).
+  expected               boolean not null default true,
+  first_join_at          timestamptz,
+  last_leave_at          timestamptz,
+  total_duration_seconds integer not null default 0,
+  attendance_status      text,
+  minutes_late           integer not null default 0,
+  source                 text,
+  created_at             timestamptz not null default now(),
+  unique (meeting_id, employee_id)
+);
+
+create index if not exists meeting_participants_employee_idx
+  on meeting_participants (org_id, employee_id, attendance_status);
+
+create table if not exists meeting_transcripts (
+  id                uuid primary key default gen_random_uuid(),
+  org_id            uuid not null references organisations(id) on delete cascade,
+  meeting_id        uuid not null references meetings(id) on delete cascade,
+  language          text not null default 'en',
+  duration_seconds  integer not null default 0,
+  segment_count     integer not null default 0,
+  s3_key            text not null,
+  speakers_resolved boolean not null default false,
+  -- Retention runs against this rather than the meeting date, so a transcript
+  -- ingested late still gets its full configured life (§8.4).
+  expires_at        timestamptz,
+  created_at        timestamptz not null default now(),
+  unique (meeting_id)
+);
+
+create table if not exists meeting_summaries (
+  id             uuid primary key default gen_random_uuid(),
+  org_id         uuid not null references organisations(id) on delete cascade,
+  meeting_id     uuid not null references meetings(id) on delete cascade,
+  overview       text not null,
+  decisions      jsonb not null default '[]'::jsonb,
+  topics         jsonb not null default '[]'::jsonb,
+  open_questions jsonb not null default '[]'::jsonb,
+  model          text not null,
+  -- Cost telemetry from day one (§11). Meeting volume varies enormously
+  -- between customers and LLM tokens are the variable cost driver, so this is
+  -- recorded per meeting rather than estimated later.
+  input_tokens   integer not null default 0,
+  output_tokens  integer not null default 0,
+  tokens_used    integer not null default 0,
+  cost_usd       numeric(10, 6) not null default 0,
+  chunk_count    integer not null default 1,
+  generated_at   timestamptz not null default now(),
+  unique (meeting_id)
+);
+
+create table if not exists meeting_actions (
+  id                uuid primary key default gen_random_uuid(),
+  org_id            uuid not null references organisations(id) on delete cascade,
+  meeting_id        uuid not null references meetings(id) on delete cascade,
+  description       text not null,
+  owner_employee_id uuid references employees(id) on delete set null,
+  owner_stated      text,
+  owner_confidence  text not null default 'unclear',
+  due_date          date,
+  -- Never null and never empty. An action without the verbatim line it came
+  -- from cannot be checked by the host, which makes a hallucinated one
+  -- indistinguishable from a real one (§5.3).
+  source_quote      text not null,
+  timestamp_ms      integer not null default 0,
+  status            text not null default 'draft',
+  confirmed_by      uuid references users(id) on delete set null,
+  confirmed_at      timestamptz,
+  task_id           uuid,
+  created_at        timestamptz not null default now()
+);
+
+create index if not exists meeting_actions_owner_idx
+  on meeting_actions (org_id, owner_employee_id, status);
+create index if not exists meeting_actions_meeting_idx
+  on meeting_actions (org_id, meeting_id);
+
+create table if not exists meeting_disputes (
+  id          uuid primary key default gen_random_uuid(),
+  org_id      uuid not null references organisations(id) on delete cascade,
+  meeting_id  uuid not null references meetings(id) on delete cascade,
+  employee_id uuid not null references employees(id) on delete cascade,
+  reason      text not null,
+  status      text not null default 'open',
+  -- Disputes route to the meeting host, not HR: the host was there and can
+  -- settle it in one tap. HR sees the outcome, not the argument (§7.4).
+  resolved_by uuid references users(id) on delete set null,
+  resolved_at timestamptz,
+  outcome     text,
+  note        text,
+  created_at  timestamptz not null default now()
+);
+
+create index if not exists meeting_disputes_meeting_idx
+  on meeting_disputes (org_id, meeting_id, status);
+
+create table if not exists speaker_mappings (
+  id                     uuid primary key default gen_random_uuid(),
+  org_id                 uuid not null references organisations(id) on delete cascade,
+  meeting_id             uuid not null references meetings(id) on delete cascade,
+  diarised_speaker_label text not null,
+  employee_id            uuid references employees(id) on delete set null,
+  -- `host_tagged` today. Voice enrolment is noted as a future improvement in
+  -- §6 and deliberately not built: it adds a biometric data category with its
+  -- own consent bar and degrades badly on poor room audio.
+  method                 text not null default 'host_tagged',
+  confidence             numeric(4, 3) not null default 1,
+  created_at             timestamptz not null default now(),
+  unique (meeting_id, diarised_speaker_label)
+);
+
+-- ---------------------------------------------------------------------------
 -- Row-level security
 -- ---------------------------------------------------------------------------
 --
@@ -515,7 +699,10 @@ declare
     'leave_types', 'leave_balances', 'leave_balance_adjustments',
     'leave_requests', 'coverage_rules',
     'compensation', 'employee_loans', 'payroll_runs', 'payslips',
-    'documents', 'idempotency_keys', 'notifications', 'audit_log'
+    'documents', 'idempotency_keys', 'notifications', 'audit_log',
+    'meeting_types', 'meetings', 'meeting_participants',
+    'meeting_transcripts', 'meeting_summaries', 'meeting_actions',
+    'meeting_disputes', 'speaker_mappings'
   ];
 begin
   foreach t in array tenant_tables loop

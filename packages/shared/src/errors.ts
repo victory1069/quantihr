@@ -36,6 +36,20 @@ export const ERROR_CODES = {
   LEAVE_OVERRIDE_REASON_REQUIRED: 'leave/override-reason-required',
   LEAVE_INVALID_RANGE: 'leave/invalid-range',
 
+  // Meetings
+  MEETING_NOT_FOUND: 'meeting/not-found',
+  MEETING_NOT_HOST: 'meeting/not-host',
+  MEETING_NOT_READY: 'meeting/not-ready',
+  MEETING_ALREADY_REVIEWED: 'meeting/already-reviewed',
+  MEETING_CAPTURE_DISABLED: 'meeting/capture-disabled',
+  MEETING_NO_TRANSCRIPT: 'meeting/no-transcript',
+  MEETING_TRANSCRIPT_EXPIRED: 'meeting/transcript-expired',
+  MEETING_DISPUTE_WINDOW_CLOSED: 'meeting/dispute-window-closed',
+  MEETING_NOT_ATTENDEE: 'meeting/not-attendee',
+  MEETING_RECORDING_NOT_ACTIVE: 'meeting/recording-not-active',
+  MEETING_CONSENT_REQUIRED: 'meeting/consent-required',
+  MEETING_EXTRACTION_UNAVAILABLE: 'meeting/extraction-unavailable',
+
   // Generic
   NOT_FOUND: 'common/not-found',
   VALIDATION_FAILED: 'common/validation-failed',
@@ -79,6 +93,13 @@ export const PERMANENT_ERROR_CODES: ReadonlySet<string> = new Set<ErrorCode>([
   ERROR_CODES.LEAVE_DOCUMENT_REQUIRED,
   ERROR_CODES.LEAVE_NOT_PENDING,
   ERROR_CODES.LEAVE_INVALID_RANGE,
+  ERROR_CODES.MEETING_NOT_HOST,
+  ERROR_CODES.MEETING_NOT_ATTENDEE,
+  ERROR_CODES.MEETING_ALREADY_REVIEWED,
+  ERROR_CODES.MEETING_CAPTURE_DISABLED,
+  ERROR_CODES.MEETING_DISPUTE_WINDOW_CLOSED,
+  ERROR_CODES.MEETING_TRANSCRIPT_EXPIRED,
+  ERROR_CODES.MEETING_CONSENT_REQUIRED,
   ERROR_CODES.NOT_FOUND,
   ERROR_CODES.VALIDATION_FAILED,
 ])

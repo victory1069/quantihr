@@ -43,6 +43,10 @@ export const keys = {
   calendar: (from: string, to: string) => ['team', 'calendar', from, to] as const,
   teamAttendance: (from: string, to: string) => ['team', 'attendance', from, to] as const,
   notifications: ['notifications'] as const,
+  meetings: (window: string) => ['meetings', window] as const,
+  meeting: (id: string) => ['meetings', 'detail', id] as const,
+  speakers: (id: string) => ['meetings', 'speakers', id] as const,
+  tasks: (status: string) => ['tasks', status] as const,
 }
 
 /** Long stale time: these change rarely and must render instantly from cache. */
@@ -370,4 +374,229 @@ export function useDocumentUrl() {
     mutationFn: (id: string) =>
       api.get<{ url: string; expiresAt: string }>(`/v1/documents/${id}/url`),
   })
+}
+
+// ---------------------------------------------------------------------------
+// Meeting assistant
+// ---------------------------------------------------------------------------
+
+export interface MeetingListItemView {
+  id: string
+  title: string
+  source: 'google_meet' | 'in_person'
+  status: string
+  scheduledStart: string
+  scheduledEnd: string
+  actualStart: string | null
+  hostEmployeeId: string | null
+  isHost: boolean
+  awaitingYourReview: boolean
+  routeToHr: boolean
+  participantCount: number
+  actionCount: number
+}
+
+export interface MeetingActionItem {
+  id: string
+  description: string
+  ownerEmployeeId: string | null
+  ownerName: string | null
+  ownerStated: string | null
+  ownerConfidence: 'explicit' | 'implied' | 'unclear'
+  dueDate: string | null
+  sourceQuote: string
+  timestampMs: number
+  status: 'draft' | 'confirmed' | 'dismissed' | 'done'
+}
+
+export interface MeetingParticipantItem {
+  employeeId: string
+  employeeName: string
+  attendanceStatus: string | null
+  minutesLate: number
+  inviteStatus: string
+  isOptional: boolean
+  firstJoinAt: string | null
+  totalDurationSeconds: number
+  source: string | null
+  expected: boolean
+}
+
+export interface MeetingDetailView {
+  id: string
+  title: string
+  source: 'google_meet' | 'in_person'
+  status: string
+  scheduledStart: string
+  scheduledEnd: string
+  actualStart: string | null
+  actualEnd: string | null
+  hostEmployeeId: string | null
+  isHost: boolean
+  routeToHr: boolean
+  meetingTypeName: string | null
+  attendanceResolution: 'did_not_occur' | 'too_short' | 'recorded' | null
+  summary: {
+    overview: string
+    decisions: { decision: string; context: string; timestamp_ms: number }[]
+    topics: { topic: string; points: string[] }[]
+    openQuestions: string[]
+    model: string
+    tokensUsed: number
+    generatedAt: string
+  } | null
+  participants: MeetingParticipantItem[]
+  actions: MeetingActionItem[]
+  unresolvedSpeakers: string[]
+}
+
+export interface TaskItem extends MeetingActionItem {
+  meetingId: string
+  meetingTitle: string
+  meetingDate: string
+}
+
+export interface SpeakerClipView {
+  speakerLabel: string
+  startMs: number
+  endMs: number
+  text: string
+  employeeId: string | null
+}
+
+export function useMeetings(window: 'upcoming' | 'past' = 'past') {
+  return useQuery({
+    queryKey: keys.meetings(window),
+    queryFn: ({ signal }) =>
+      api.get<{ meetings: MeetingListItemView[] }>(`/v1/meetings?window=${window}`, signal),
+    ...LIVE,
+  })
+}
+
+export function useMeeting(id: string | undefined) {
+  return useQuery({
+    queryKey: keys.meeting(id ?? ''),
+    queryFn: ({ signal }) => api.get<MeetingDetailView>(`/v1/meetings/${id}`, signal),
+    enabled: !!id,
+    ...LIVE,
+  })
+}
+
+export function useTasks(status: 'open' | 'done' | 'all' = 'open') {
+  return useQuery({
+    queryKey: keys.tasks(status),
+    queryFn: ({ signal }) =>
+      api.get<{ tasks: TaskItem[] }>(`/v1/tasks?status=${status}`, signal),
+    ...LIVE,
+  })
+}
+
+export function useSpeakers(id: string | undefined) {
+  return useQuery({
+    queryKey: keys.speakers(id ?? ''),
+    queryFn: ({ signal }) =>
+      api.get<{
+        speakers: SpeakerClipView[]
+        attendees: { employeeId: string; employeeName: string }[]
+      }>(`/v1/meetings/${id}/speakers`, signal),
+    enabled: !!id,
+  })
+}
+
+/**
+ * Host review.
+ *
+ * Sent as one call for the whole set rather than one per action, because the
+ * screen's target is fifteen seconds and a round trip per row does not fit
+ * inside that.
+ */
+export function useSubmitReview(meetingId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (body: {
+      decisions: {
+        actionId: string
+        decision: 'confirm' | 'dismiss'
+        description?: string
+        ownerEmployeeId?: string | null
+        dueDate?: string | null
+      }[]
+      overview?: string
+    }) => api.post<{ confirmed: number; dismissed: number }>(
+      `/v1/meetings/${meetingId}/review`,
+      body,
+    ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.meeting(meetingId) })
+      void queryClient.invalidateQueries({ queryKey: keys.meetings('past') })
+      void queryClient.invalidateQueries({ queryKey: keys.tasks('open') })
+    },
+  })
+}
+
+export function useTagSpeakers(meetingId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (mappings: { speakerLabel: string; employeeId: string | null }[]) =>
+      api.post(`/v1/meetings/${meetingId}/speakers`, { mappings }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.meeting(meetingId) })
+      void queryClient.invalidateQueries({ queryKey: keys.speakers(meetingId) })
+    },
+  })
+}
+
+export function useCompleteTask() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.post(`/v1/tasks/${id}`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.tasks('open') })
+    },
+  })
+}
+
+export function useRaiseDispute(meetingId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (reason: string) =>
+      api.post(`/v1/meetings/${meetingId}/disputes`, { reason }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.meeting(meetingId) })
+    },
+  })
+}
+
+/** Recording controls. Chunks upload as they complete, not as one file at the end. */
+export function useRecording(meetingId: string) {
+  const queryClient = useQueryClient()
+
+  const start = useMutation({
+    mutationFn: () => api.post(`/v1/meetings/${meetingId}/recording/start`),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.meeting(meetingId) })
+    },
+  })
+
+  const uploadChunk = useMutation({
+    mutationFn: (chunk: { sequence: number; audio: string; durationMs: number }) =>
+      api.post(`/v1/meetings/${meetingId}/recording/chunk`, chunk),
+  })
+
+  const stop = useMutation({
+    mutationFn: () =>
+      api.post<{ status: string; speakersToTag?: number; transcription?: string }>(
+        `/v1/meetings/${meetingId}/recording/stop`,
+      ),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.meeting(meetingId) })
+    },
+  })
+
+  const offRecord = useMutation({
+    mutationFn: (atMs: number) =>
+      api.post(`/v1/meetings/${meetingId}/off-record`, { atMs }),
+  })
+
+  return { start, uploadChunk, stop, offRecord }
 }
