@@ -207,6 +207,11 @@ beforeEach(async () => {
   await db.withTenant(org.orgId, async (tx) => {
     await tx.delete(meetings)
     await tx.delete(notifications)
+    // The excused-attendance case inserts approved leave covering the fixture
+    // date. Left behind it silently excuses every later meeting for the same
+    // employee, so cases stop being independent. The pending request `makeOrg`
+    // seeds for the isolation suite is deliberately kept.
+    await tx.delete(leaveRequests).where(eq(leaveRequests.status, 'approved'))
   })
 })
 
@@ -638,6 +643,74 @@ describe('disputes', () => {
 
     expect(response.statusCode).toBe(422)
     expect(response.json().code).toBe('meeting/dispute-window-closed')
+  })
+})
+
+describe('my meeting attendance', () => {
+  it('returns only the caller own rows, split by source', async () => {
+    const meetingId = await seedMeeting(org, { conferenceId: 'conf-att', lateJoin: true })
+    await ingestConference(db, org.orgId, meetingId)
+
+    const virtual = await app.inject({
+      method: 'GET',
+      url: '/v1/attendance/meetings?source=google_meet',
+      headers: bearer(org.accessToken),
+    })
+
+    expect(virtual.statusCode).toBe(200)
+    const body = virtual.json()
+    expect(body.records).toHaveLength(1)
+    expect(body.records[0].title).toBe('Launch sync')
+    expect(body.records[0].attendanceStatus).toBe('late')
+    expect(body.records[0].minutesLate).toBe(20)
+    expect(body.late).toBe(1)
+
+    // The same meeting must not surface under the in-person tab.
+    const physical = await app.inject({
+      method: 'GET',
+      url: '/v1/attendance/meetings?source=in_person',
+      headers: bearer(org.accessToken),
+    })
+    expect(physical.json().records).toHaveLength(0)
+  })
+
+  it('excludes voided meetings from every count', async () => {
+    // A meeting that collapsed after three minutes voids for everyone, so it
+    // can be neither attended nor missed.
+    const meetingId = await seedMeeting(org, {
+      conferenceId: 'conf-void',
+      actualEnd: at('10:03'),
+    })
+    await ingestConference(db, org.orgId, meetingId)
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v1/attendance/meetings?source=google_meet',
+      headers: bearer(org.accessToken),
+    })
+
+    const body = response.json()
+    expect(body.records[0].attendanceStatus).toBe('void')
+    expect(body.attended).toBe(0)
+    expect(body.late).toBe(0)
+    expect(body.missed).toBe(0)
+  })
+
+  it('does not leak another employee attendance', async () => {
+    const meetingId = await seedMeeting(org, { conferenceId: 'conf-leak', lateJoin: true })
+    await ingestConference(db, org.orgId, meetingId)
+
+    // The manager was on time; the staff member was 20 minutes late. The
+    // manager's own view must show their own row, not the staff member's.
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v1/attendance/meetings?source=google_meet',
+      headers: bearer(org.managerToken),
+    })
+
+    expect(response.json().records).toHaveLength(1)
+    expect(response.json().records[0].attendanceStatus).toBe('present')
+    expect(response.json().records[0].minutesLate).toBe(0)
   })
 })
 

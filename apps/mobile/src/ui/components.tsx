@@ -245,6 +245,97 @@ export function Card({
   )
 }
 
+/**
+ * Sub-navigation within a screen.
+ *
+ * Segments are equal width, so the indicator's position is just the index over
+ * the count — no per-label measurement, and the control does not reflow when a
+ * label changes length. The container's width is measured once on layout
+ * because `translateX` cannot take a percentage.
+ *
+ * The indicator slides rather than jumping. On a tab strip that is the whole
+ * point: the movement is what tells you the two panels are siblings and which
+ * direction you just travelled.
+ */
+export function SegmentedTabs<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: { value: T; label: string }[]
+  value: T
+  onChange: (value: T) => void
+}) {
+  const c = useColour()
+  const [width, setWidth] = useState(0)
+  const slide = useRef(new Animated.Value(0)).current
+  const index = Math.max(0, options.findIndex((o) => o.value === value))
+
+  useEffect(() => {
+    Animated.spring(slide, {
+      toValue: index,
+      useNativeDriver: true,
+      ...motion.enter,
+    }).start()
+  }, [slide, index])
+
+  const segment = width > 0 ? width / options.length : 0
+
+  return (
+    <View
+      style={[styles.segments, { backgroundColor: c.surfaceSunken, borderColor: c.border }]}
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+      accessibilityRole="tablist"
+    >
+      {segment > 0 ? (
+        <Animated.View
+          pointerEvents="none"
+          style={[
+            styles.segmentIndicator,
+            {
+              width: segment - 4,
+              backgroundColor: c.surface,
+              borderColor: c.border,
+              transform: [
+                {
+                  translateX: slide.interpolate({
+                    inputRange: options.map((_, i) => i),
+                    outputRange: options.map((_, i) => i * segment + 2),
+                  }),
+                },
+              ],
+            },
+          ]}
+        />
+      ) : null}
+
+      {options.map((option) => {
+        const selected = option.value === value
+        return (
+          <Pressable
+            key={option.value}
+            accessibilityRole="tab"
+            accessibilityState={{ selected }}
+            onPress={() => onChange(option.value)}
+            style={styles.segment}
+          >
+            <Text
+              numberOfLines={1}
+              style={[
+                styles.segmentLabel,
+                { color: selected ? c.text : c.textMuted },
+                selected && { fontWeight: font.weight.semibold },
+              ]}
+            >
+              {option.label}
+            </Text>
+          </Pressable>
+        )
+      })}
+    </View>
+  )
+}
+
 export function SectionTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
   const c = useColour()
   return (
@@ -504,6 +595,23 @@ const styles = StyleSheet.create({
     fontFamily: font.family,
   },
   pageSub: { fontSize: font.size.md, lineHeight: 22, fontFamily: font.family },
+
+  segments: {
+    flexDirection: 'row',
+    borderRadius: radius.md,
+    borderWidth: 1,
+    padding: 2,
+    minHeight: 44,
+  },
+  segmentIndicator: {
+    position: 'absolute',
+    top: 2,
+    bottom: 2,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+  },
+  segment: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: space.sm },
+  segmentLabel: { fontSize: font.size.sm, fontFamily: font.family },
 
   sectionTitleRow: {
     flexDirection: 'row',

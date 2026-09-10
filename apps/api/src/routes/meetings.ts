@@ -951,6 +951,82 @@ export function registerMeetingRoutes(app: FastifyInstance, db: Database): void 
     return reply.send({ ok: true })
   })
 
+  /**
+   * The caller's own meeting attendance, one source at a time.
+   *
+   * Served under `/v1/attendance/` because that is what it is to the employee —
+   * the Attendance tab shows physical meetings, virtual meetings and morning
+   * clock-ins side by side. The handler lives here because it queries the
+   * meeting tables, and splitting it into `attendance.ts` would put a join
+   * across two modules for the sake of a URL prefix.
+   *
+   * Only the caller's own rows, ever. A manager looking at someone else's
+   * meeting attendance goes through the team endpoints, which enforce the
+   * direct-report scoping.
+   */
+  app.get('/v1/attendance/meetings', async (request, reply) => {
+    const auth = requireAuth(request)
+    const query = schemas.meetings.myMeetingAttendanceQuery.parse(request.query)
+
+    const result = await tenant(request, async (tx) => {
+      const conditions = [
+        eq(meetingParticipants.employeeId, auth.employeeId),
+        eq(meetings.source, query.source),
+      ]
+      if (query.from) conditions.push(gte(meetings.scheduledStart, new Date(query.from)))
+      if (query.to) {
+        conditions.push(lt(meetings.scheduledStart, new Date(`${query.to}T23:59:59.999Z`)))
+      }
+
+      const rows = await tx
+        .select({
+          meetingId: meetings.id,
+          title: meetings.title,
+          source: meetings.source,
+          scheduledStart: meetings.scheduledStart,
+          actualStart: meetings.actualStart,
+          attendanceStatus: meetingParticipants.attendanceStatus,
+          minutesLate: meetingParticipants.minutesLate,
+          firstJoinAt: meetingParticipants.firstJoinAt,
+          totalDurationSeconds: meetingParticipants.totalDurationSeconds,
+          resolution: meetings.attendanceResolution,
+          expected: meetingParticipants.expected,
+        })
+        .from(meetingParticipants)
+        .innerJoin(meetings, eq(meetings.id, meetingParticipants.meetingId))
+        .where(and(...conditions))
+        .orderBy(desc(meetings.scheduledStart))
+        .limit(100)
+
+      return rows.map((r) => ({
+        meetingId: r.meetingId,
+        title: r.title,
+        source: r.source,
+        scheduledStart: r.scheduledStart.toISOString(),
+        actualStart: r.actualStart?.toISOString() ?? null,
+        attendanceStatus: r.attendanceStatus,
+        minutesLate: r.minutesLate,
+        firstJoinAt: r.firstJoinAt?.toISOString() ?? null,
+        totalDurationSeconds: r.totalDurationSeconds,
+        resolution: r.resolution,
+        expected: r.expected,
+      }))
+    })
+
+    // `void` records are excluded from every count: the meeting was too short
+    // to hold anyone to, so counting it either way would be a figure the
+    // employee could not defend (§7.3).
+    const counted = result.filter((r) => r.attendanceStatus !== 'void')
+
+    return reply.send({
+      records: result,
+      attended: counted.filter((r) => r.attendanceStatus === 'present').length,
+      late: counted.filter((r) => r.attendanceStatus === 'late').length,
+      missed: counted.filter((r) => r.attendanceStatus === 'absent').length,
+      totalMinutesLate: counted.reduce((sum, r) => sum + r.minutesLate, 0),
+    })
+  })
+
   // -------------------------------------------------------------------------
   // My tasks (§9)
   // -------------------------------------------------------------------------

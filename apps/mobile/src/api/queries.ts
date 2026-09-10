@@ -47,6 +47,7 @@ export const keys = {
   meeting: (id: string) => ['meetings', 'detail', id] as const,
   speakers: (id: string) => ['meetings', 'speakers', id] as const,
   tasks: (status: string) => ['tasks', status] as const,
+  meetingAttendance: (source: string) => ['attendance', 'meetings', source] as const,
 }
 
 /** Long stale time: these change rarely and must render instantly from cache. */
@@ -599,4 +600,36 @@ export function useRecording(meetingId: string) {
   })
 
   return { start, uploadChunk, stop, offRecord }
+}
+
+export interface MeetingAttendanceRow {
+  meetingId: string
+  title: string
+  source: 'google_meet' | 'in_person'
+  scheduledStart: string
+  actualStart: string | null
+  attendanceStatus: 'present' | 'late' | 'absent' | 'excused' | 'void' | null
+  minutesLate: number
+  firstJoinAt: string | null
+  totalDurationSeconds: number
+  resolution: 'did_not_occur' | 'too_short' | 'recorded' | null
+  expected: boolean
+}
+
+export interface MeetingAttendanceResponse {
+  records: MeetingAttendanceRow[]
+  attended: number
+  late: number
+  missed: number
+  totalMinutesLate: number
+}
+
+/** The caller's own attendance for one meeting source. */
+export function useMeetingAttendance(source: 'in_person' | 'google_meet') {
+  return useQuery({
+    queryKey: keys.meetingAttendance(source),
+    queryFn: ({ signal }) =>
+      api.get<MeetingAttendanceResponse>(`/v1/attendance/meetings?source=${source}`, signal),
+    ...SLOW,
+  })
 }

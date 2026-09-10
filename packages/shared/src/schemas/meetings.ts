@@ -427,6 +427,43 @@ export const recordingChunk = z.object({
   durationMs: z.number().int().min(0),
 })
 
+/**
+ * The caller's own attendance across meetings, one source at a time.
+ *
+ * Split by source because the Attendance tab presents physical and virtual
+ * meetings separately: they are gathered by completely different mechanisms —
+ * a room code versus a conference record — and they fail in different ways, so
+ * mixing them into one list would make a gap impossible to interpret.
+ */
+export const myMeetingAttendanceQuery = z.object({
+  source: meetingSource,
+  from: isoDate.optional(),
+  to: isoDate.optional(),
+})
+
+export const myMeetingAttendanceRow = z.object({
+  meetingId: uuid,
+  title: z.string(),
+  source: meetingSource,
+  scheduledStart: isoInstant,
+  actualStart: isoInstant.nullable(),
+  attendanceStatus: meetingAttendanceStatus.nullable(),
+  minutesLate: z.number().int(),
+  firstJoinAt: isoInstant.nullable(),
+  totalDurationSeconds: z.number().int(),
+  /** Carried so the row can explain itself when nothing was recorded. */
+  resolution: z.enum(['did_not_occur', 'too_short', 'recorded']).nullable(),
+  expected: z.boolean(),
+})
+
+export const myMeetingAttendanceResponse = z.object({
+  records: z.array(myMeetingAttendanceRow),
+  attended: z.number().int(),
+  late: z.number().int(),
+  missed: z.number().int(),
+  totalMinutesLate: z.number().int(),
+})
+
 export const myActionsQuery = z.object({
   status: z.enum(['open', 'done', 'all']).default('open'),
 })
