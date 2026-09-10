@@ -51,26 +51,78 @@ export function Screen({
   children,
   scroll = true,
   refreshControl,
+  floating,
 }: {
   children: ReactNode
   scroll?: boolean
   refreshControl?: React.ReactElement
+  /**
+   * Pinned above the content, outside the scroll. A floating action inside a
+   * ScrollView scrolls away with the page, which defeats the point of it.
+   */
+  floating?: ReactNode
 }) {
   const c = useColour()
   const inner = <View style={styles.column}>{children}</View>
 
-  if (!scroll) return <View style={[styles.screen, { backgroundColor: c.bg }]}>{inner}</View>
-
-  return (
+  const body = !scroll ? (
+    <View style={[styles.screen, { backgroundColor: c.bg }]}>{inner}</View>
+  ) : (
     <ScrollView
       style={[styles.screen, { backgroundColor: c.bg }]}
-      contentContainerStyle={styles.scrollContent}
+      contentContainerStyle={[
+        styles.scrollContent,
+        // Room for the action to sit over the end of the list rather than on
+        // top of the last row.
+        floating ? { paddingBottom: space.xxxl + 72 } : null,
+      ]}
       refreshControl={refreshControl}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
       {inner}
     </ScrollView>
+  )
+
+  if (!floating) return body
+
+  return (
+    <View style={styles.screen}>
+      {body}
+      <View style={styles.floating} pointerEvents="box-none">
+        {floating}
+      </View>
+    </View>
+  )
+}
+
+/**
+ * The primary create action on a list screen.
+ *
+ * A circle with a plus rather than a labelled bar, because it sits over content
+ * and a bar wide enough to read would cover the last row it is meant to sit
+ * beside. The accessible name carries what the glyph cannot.
+ */
+export function Fab({
+  onPress,
+  label,
+  icon = '+',
+}: {
+  onPress: () => void
+  label: string
+  icon?: string
+}) {
+  const c = useColour()
+  const scheme = useScheme()
+
+  return (
+    <Press onPress={onPress} accessibilityLabel={label} scaleTo={0.92}>
+      <View
+        style={[styles.fab, { backgroundColor: c.primary }, shadow(scheme).lifted]}
+      >
+        <Text style={[styles.fabIcon, { color: c.primaryText }]}>{icon}</Text>
+      </View>
+    </Press>
   )
 }
 
@@ -572,6 +624,21 @@ export function Divider() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  floating: {
+    position: 'absolute',
+    right: space.lg,
+    bottom: space.lg,
+    alignItems: 'flex-end',
+    gap: space.sm,
+  },
+  fab: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  fabIcon: { fontSize: 30, lineHeight: 34, fontWeight: font.weight.regular },
   scrollContent: { paddingHorizontal: space.lg, paddingBottom: space.xxxl },
   column: {
     width: '100%',

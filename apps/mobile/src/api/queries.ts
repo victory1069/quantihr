@@ -676,3 +676,45 @@ export function useGenerateMeetingCode() {
     },
   })
 }
+
+/**
+ * Creates a meeting and, when it is physical, issues its check-in code in the
+ * same step.
+ *
+ * Two calls rather than one because they are two decisions on the server — a
+ * meeting can exist without a code, and a code can be reissued without
+ * recreating the meeting. Joining them here means the manager only makes the
+ * decision once, at the point they already know whether people are walking
+ * into a room.
+ */
+export function useCreateMeeting() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: {
+      title: string
+      scheduledStart: string
+      scheduledEnd: string
+      inviteeIds: string[]
+      physical: boolean
+      venue?: string
+    }) => {
+      const created = await api.post<{ id: string; routeToHr: boolean }>('/v1/meetings', {
+        title: input.title,
+        scheduledStart: input.scheduledStart,
+        scheduledEnd: input.scheduledEnd,
+        inviteeIds: input.inviteeIds,
+      })
+
+      if (!input.physical) return { id: created.id, code: null as string | null }
+
+      const coded = await api.post<MeetingCodeView>(`/v1/meetings/${created.id}/checkin-code`, {
+        venue: input.venue ?? '',
+      })
+      return { id: created.id, code: coded.code }
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.meetings('upcoming') })
+      void queryClient.invalidateQueries({ queryKey: keys.meetingCodes })
+    },
+  })
+}
