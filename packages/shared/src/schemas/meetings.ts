@@ -414,6 +414,34 @@ export const roomCheckIn = z.object({
   code: z.string().min(4),
 })
 
+/**
+ * Generating a code for one physical meeting.
+ *
+ * Venue is free text rather than a location id, because a physical meeting is
+ * as often "Boardroom, 3rd floor" or a customer's office as it is one of the
+ * configured sites — and forcing it into the location list would either
+ * pollute that list or lose the detail.
+ */
+export const generateMeetingCode = z.object({
+  venue: z.string().max(200).optional(),
+  agenda: z.string().max(2000).optional(),
+  locationId: uuid.nullable().optional(),
+  /** Minutes the code stays valid. Defaults to the meeting's own length. */
+  validForMinutes: z.number().int().min(5).max(720).optional(),
+})
+
+export const meetingCheckinCode = z.object({
+  meetingId: uuid,
+  title: z.string(),
+  code: z.string(),
+  expiresAt: isoInstant,
+  venue: z.string().nullable(),
+  agenda: z.string().nullable(),
+  locationName: z.string().nullable(),
+  scheduledStart: isoInstant,
+  checkedIn: z.number().int(),
+})
+
 export const offRecordFlag = z.object({
   /** Milliseconds from the start of the recording. */
   atMs: z.number().int().min(0),

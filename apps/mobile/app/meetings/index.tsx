@@ -10,12 +10,33 @@ import { useState } from 'react'
 import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { Appear, Badge, Card, EmptyState, Screen, Skeleton } from '../../src/ui/components'
+import {
+  Appear,
+  Badge,
+  Card,
+  EmptyState,
+  Screen,
+  SegmentedTabs,
+  Skeleton,
+} from '../../src/ui/components'
 import { Label } from '../../src/ui/primitives'
-import { colour, font, radius, space } from '../../src/ui/theme'
+import { colour, font, space } from '../../src/ui/theme'
 import { keys, useMeetings, type MeetingListItemView } from '../../src/api/queries'
 
 type Window = 'past' | 'upcoming'
+type Tab = Window | 'codes'
+
+/**
+ * Codes sits alongside the two windows rather than in its own place in the tab
+ * bar. It is the same subject — meetings — and it is only ever wanted while one
+ * is about to start, so burying it a level down would mean hunting for it in
+ * the thirty seconds before a room fills up.
+ */
+const TABS: { value: Tab; label: string }[] = [
+  { value: 'past', label: 'Past' },
+  { value: 'upcoming', label: 'Upcoming' },
+  { value: 'codes', label: 'Codes' },
+]
 
 export default function Meetings() {
   const router = useRouter()
@@ -37,21 +58,17 @@ export default function Meetings() {
       }
     >
       <Appear index={0}>
-        <View style={styles.tabs}>
-          {(['past', 'upcoming'] as Window[]).map((value) => (
-            <Pressable
-              key={value}
-              onPress={() => setWindow(value)}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: window === value }}
-              style={[styles.tab, window === value && styles.tabActive]}
-            >
-              <Text style={[styles.tabLabel, window === value && styles.tabLabelActive]}>
-                {value === 'past' ? 'Past' : 'Upcoming'}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
+        <SegmentedTabs
+          options={TABS}
+          value={window}
+          onChange={(next) => {
+            if (next === 'codes') {
+              router.push('/meetings/codes')
+              return
+            }
+            setWindow(next)
+          }}
+        />
       </Appear>
 
       {waiting.length > 0 && window === 'past' ? (
@@ -155,23 +172,6 @@ function formatWhen(iso: string): string {
 }
 
 const styles = StyleSheet.create({
-  tabs: { flexDirection: 'row', gap: space.sm },
-  tab: {
-    flex: 1,
-    paddingVertical: space.md,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    borderColor: colour.border,
-    alignItems: 'center',
-  },
-  tabActive: { borderColor: colour.primaryBorder, backgroundColor: colour.primarySoft },
-  tabLabel: {
-    fontSize: font.size.sm,
-    color: colour.textMuted,
-    fontFamily: font.family,
-    fontWeight: font.weight.semibold,
-  },
-  tabLabelActive: { color: colour.primary },
 
   waiting: { borderColor: colour.primaryBorder },
   waitingText: {

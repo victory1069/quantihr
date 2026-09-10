@@ -806,3 +806,145 @@ describe('meeting types', () => {
     expect(meeting.json().routeToHr).toBe(true)
   })
 })
+
+describe('meeting check-in codes', () => {
+  async function inPersonMeeting(): Promise<string> {
+    return db.withTenant(org.orgId, async (tx) => {
+      const [row] = await tx
+        .insert(meetings)
+        .values({
+          orgId: org.orgId,
+          title: 'Shift briefing',
+          hostEmployeeId: org.managerEmployeeId,
+          scheduledStart: new Date(Date.now() + 10 * 60_000),
+          scheduledEnd: new Date(Date.now() + 70 * 60_000),
+          source: 'in_person',
+          status: 'scheduled',
+        })
+        .returning()
+      return row!.id
+    })
+  }
+
+  it('lets the host generate a code with a venue', async () => {
+    const meetingId = await inPersonMeeting()
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/meetings/${meetingId}/checkin-code`,
+      headers: bearer(org.managerToken),
+      payload: { venue: 'Boardroom, 3rd floor', agenda: 'Weekly rota' },
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    expect(body.code).toMatch(/^[A-Z2-9]{6}$/)
+    expect(body.venue).toBe('Boardroom, 3rd floor')
+    // Unambiguous alphabet: someone is reading this across a room.
+    expect(body.code).not.toMatch(/[O0I1]/)
+  })
+
+  it('refuses a code to someone who is neither host nor HR', async () => {
+    const meetingId = await inPersonMeeting()
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/meetings/${meetingId}/checkin-code`,
+      headers: bearer(org.accessToken),
+      payload: {},
+    })
+
+    expect(response.statusCode).toBe(403)
+  })
+
+  it('refuses a check-in before any code has been issued', async () => {
+    const meetingId = await inPersonMeeting()
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/meetings/${meetingId}/checkin`,
+      headers: bearer(org.accessToken),
+      payload: { code: 'ABC123' },
+    })
+
+    expect(response.statusCode).toBe(409)
+  })
+
+  it('rejects the wrong code and accepts the right one', async () => {
+    const meetingId = await inPersonMeeting()
+    const issued = await app.inject({
+      method: 'POST',
+      url: `/v1/meetings/${meetingId}/checkin-code`,
+      headers: bearer(org.managerToken),
+      payload: {},
+    })
+    const code = issued.json().code as string
+
+    // Previously any six characters were accepted, which made the room code
+    // decorative — anyone with the meeting id could put themselves in the room.
+    const wrong = await app.inject({
+      method: 'POST',
+      url: `/v1/meetings/${meetingId}/checkin`,
+      headers: bearer(org.accessToken),
+      payload: { code: 'ZZZZZZ' },
+    })
+    expect(wrong.statusCode).toBe(422)
+    expect(wrong.json().code).toBe('checkin/code-invalid')
+
+    const right = await app.inject({
+      method: 'POST',
+      url: `/v1/meetings/${meetingId}/checkin`,
+      headers: bearer(org.accessToken),
+      payload: { code: code.toLowerCase() },
+    })
+    expect(right.statusCode).toBe(200)
+  })
+
+  it('rejects an expired code', async () => {
+    const meetingId = await inPersonMeeting()
+    const issued = await app.inject({
+      method: 'POST',
+      url: `/v1/meetings/${meetingId}/checkin-code`,
+      headers: bearer(org.managerToken),
+      payload: {},
+    })
+    const code = issued.json().code as string
+
+    await db.withTenant(org.orgId, async (tx) => {
+      await tx
+        .update(meetings)
+        .set({ checkinCodeExpiresAt: new Date(Date.now() - 60_000) })
+        .where(eq(meetings.id, meetingId))
+    })
+
+    const response = await app.inject({
+      method: 'POST',
+      url: `/v1/meetings/${meetingId}/checkin`,
+      headers: bearer(org.accessToken),
+      payload: { code },
+    })
+
+    expect(response.statusCode).toBe(422)
+    expect(response.json().code).toBe('checkin/code-stale')
+  })
+
+  it('lists codes for the host and hides other hosts meetings', async () => {
+    await inPersonMeeting()
+
+    const asHost = await app.inject({
+      method: 'GET',
+      url: '/v1/meetings/checkin-codes',
+      headers: bearer(org.managerToken),
+    })
+    expect(asHost.json().meetings.length).toBeGreaterThan(0)
+
+    // The staff member hosts nothing, so they see nothing — not an error.
+    const asStaff = await app.inject({
+      method: 'GET',
+      url: '/v1/meetings/checkin-codes',
+      headers: bearer(org.accessToken),
+    })
+    expect(asStaff.statusCode).toBe(200)
+    expect(asStaff.json().meetings).toEqual([])
+  })
+})

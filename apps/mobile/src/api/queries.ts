@@ -48,6 +48,7 @@ export const keys = {
   speakers: (id: string) => ['meetings', 'speakers', id] as const,
   tasks: (status: string) => ['tasks', status] as const,
   meetingAttendance: (source: string) => ['attendance', 'meetings', source] as const,
+  meetingCodes: ['meetings', 'codes'] as const,
 }
 
 /** Long stale time: these change rarely and must render instantly from cache. */
@@ -631,5 +632,47 @@ export function useMeetingAttendance(source: 'in_person' | 'google_meet') {
     queryFn: ({ signal }) =>
       api.get<MeetingAttendanceResponse>(`/v1/attendance/meetings?source=${source}`, signal),
     ...SLOW,
+  })
+}
+
+export interface MeetingCodeView {
+  meetingId: string
+  title: string
+  code: string | null
+  expiresAt: string | null
+  venue: string | null
+  agenda: string | null
+  locationName: string | null
+  scheduledStart: string
+  checkedIn: number
+}
+
+/** In-person meetings running now or soon, with their check-in codes. */
+export function useMeetingCodes() {
+  return useQuery({
+    queryKey: keys.meetingCodes,
+    queryFn: ({ signal }) =>
+      api.get<{ meetings: MeetingCodeView[] }>('/v1/meetings/checkin-codes', signal),
+    ...LIVE,
+  })
+}
+
+export function useGenerateMeetingCode() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: {
+      meetingId: string
+      venue?: string
+      agenda?: string
+      validForMinutes?: number
+    }) =>
+      api.post<MeetingCodeView>(`/v1/meetings/${input.meetingId}/checkin-code`, {
+        venue: input.venue,
+        agenda: input.agenda,
+        ...(input.validForMinutes ? { validForMinutes: input.validForMinutes } : {}),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.meetingCodes })
+    },
   })
 }

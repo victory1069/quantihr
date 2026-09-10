@@ -584,7 +584,7 @@ const TABS = [
   { id: 'payroll',    label: 'Payroll',       group: 'Policy',    accent: '#0B7A5C' },
 
   { id: 'locations',  label: 'Locations',     group: 'Workplace', accent: '#E8A33D' },
-  { id: 'code',       label: 'Check-in code', group: 'Workplace', accent: '#E8A33D' },
+  { id: 'code',       label: 'Check-in codes', group: 'Workplace', accent: '#E8A33D' },
   { id: 'devices',    label: 'Devices',       group: 'Workplace', accent: '#E8A33D' },
 
   { id: 'settings',   label: 'Settings',      group: 'Org',       accent: '#FF6B4A' },
@@ -1704,36 +1704,163 @@ VIEWS.devices = async () => {
 
 VIEWS.code = async () => {
   await refreshReference()
+
+  /*
+   * Two kinds of code, kept apart because they are not the same control.
+   *
+   * The door code is a rotating per-location secret HR puts on a screen at the
+   * entrance. A meeting code is fixed for one sitting and belongs to whoever is
+   * running that meeting. Merging them into one screen would imply a manager
+   * generating a room code had somehow been given the keys to the building.
+   */
   const section = el(`<section>
-    <h2>Check-in code</h2>
-    <p class="lede">Show this on a display at the entrance. It rotates automatically.</p>
-    <div class="card">
-      <label>Location</label>
-      <select id="code-loc">${state.locations.map((l) => `<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select>
-      <div class="code-display" id="code-value">••••••</div>
-      <div class="code-meta" id="code-meta"></div>
-      ${notice('warn', 'A screenshot of this code defeats it in seconds. Treat check-in as a deterrent and a record, not proof of presence.')}
+    <div class="page-head">
+      <div>
+        <h2>Check-in codes</h2>
+        <p class="lede">A code is a deterrent and a record, not proof of presence.</p>
+      </div>
     </div>
+    <div class="kinds" style="grid-template-columns:repeat(2,minmax(0,1fr))">
+      <button class="kind" id="code-tab-door" style="--tint:#E8A33D" aria-pressed="true">
+        <strong>Building entrance</strong><span>Rotating code for a location. HR only.</span>
+      </button>
+      <button class="kind" id="code-tab-meetings" style="--tint:#B14BE8" aria-pressed="false">
+        <strong>Physical meetings</strong><span>One fixed code per sitting, with its venue.</span>
+      </button>
+    </div>
+    <div id="code-panel"></div>
   </section>`)
 
+  const panel = $('#code-panel', section)
   let timer = null
-  const load = async () => {
-    const id = $('#code-loc', section).value
-    if (!id) { $('#code-value', section).textContent = '—'; return }
-    try {
-      const r = await req(`/v1/admin/checkin-code/${id}`)
-      $('#code-value', section).textContent = r.code
-      const secs = Math.max(0, Math.round((new Date(r.validUntil) - Date.now()) / 1000))
-      $('#code-meta', section).textContent = `Rotates in ${secs}s · every ${r.rotationMinutes} minute(s)`
-    } catch (e) { $('#code-meta', section).textContent = e.message }
+  const stop = () => { if (timer) { clearInterval(timer); timer = null } }
+
+  const doorPanel = () => {
+    stop()
+    panel.innerHTML = `
+      <div class="card">
+        <label>Location</label>
+        <select id="code-loc">${state.locations.map((l) => `<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select>
+        <div class="code-display" id="code-value">••••••</div>
+        <div class="code-meta" id="code-meta"></div>
+        ${notice('warn', 'A screenshot of this code defeats it in seconds. Treat check-in as a deterrent and a record, not proof of presence.')}
+      </div>`
+
+    const load = async () => {
+      const id = $('#code-loc', panel).value
+      if (!id) { $('#code-value', panel).textContent = '—'; return }
+      try {
+        const r = await req(`/v1/admin/checkin-code/${id}`)
+        $('#code-value', panel).textContent = r.code
+        const secs = Math.max(0, Math.round((new Date(r.validUntil) - Date.now()) / 1000))
+        $('#code-meta', panel).textContent = `Rotates in ${secs}s · every ${r.rotationMinutes} minute(s)`
+      } catch (e) { $('#code-meta', panel).textContent = formatError(e) }
+    }
+
+    $('#code-loc', panel).addEventListener('change', load)
+    void load()
+    timer = setInterval(load, 5000)
   }
 
-  $('#code-loc', section).addEventListener('change', load)
-  await load()
-  timer = setInterval(load, 5000)
+  const meetingsPanel = async () => {
+    stop()
+    panel.innerHTML = '<p class="muted">Loading…</p>'
+    let list
+    try {
+      list = await req('/v1/meetings/checkin-codes')
+    } catch (e) {
+      panel.innerHTML = notice('bad', formatError(e))
+      return
+    }
+
+    const when = (iso) => new Date(iso).toLocaleString(undefined,
+      { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })
+
+    panel.innerHTML = `
+      <div class="card">
+        <h3>In-person meetings today</h3>
+        <p class="hint">
+          Meetings from six hours ago to twelve hours ahead. The code is fixed for the
+          sitting rather than rotating — a rotation partway through locks out whoever
+          arrived late, which is exactly who still needs to check in.
+        </p>
+        ${list.meetings.length === 0
+          ? '<p class="muted">No in-person meetings in that window. Create one from the mobile app and it will appear here.</p>'
+          : `<div class="table-wrap"><table>
+              <thead><tr><th>Meeting</th><th>Starts</th><th>Venue</th><th>Code</th><th>Checked in</th><th></th></tr></thead>
+              <tbody>${list.meetings.map((m) => `<tr>
+                <td>${esc(m.title)}</td>
+                <td>${esc(when(m.scheduledStart))}</td>
+                <td>${esc(m.venue ?? m.locationName ?? '—')}</td>
+                <td>${m.code
+                  ? `<span class="num" style="font-size:16px;letter-spacing:3px">${esc(m.code)}</span>
+                     <div class="muted" style="font-size:12px">${m.expiresAt && new Date(m.expiresAt) < new Date() ? 'expired' : 'until ' + esc(when(m.expiresAt))}</div>`
+                  : '<span class="muted">not generated</span>'}</td>
+                <td>${m.checkedIn}</td>
+                <td><button class="btn ghost gen-code" data-id="${m.meetingId}" data-title="${esc(m.title)}"
+                            data-venue="${esc(m.venue ?? '')}" data-agenda="${esc(m.agenda ?? '')}">
+                      ${m.code ? 'New code' : 'Generate'}
+                    </button></td>
+              </tr>`).join('')}</tbody>
+            </table></div>`}
+      </div>`
+
+    for (const b of panel.querySelectorAll('.gen-code')) {
+      b.addEventListener('click', () => {
+        const body = el(`<div>
+          <div class="grid">
+            <div><label>Venue</label><input id="g-venue" placeholder="Boardroom, 3rd floor" value="${esc(b.dataset.venue)}" /></div>
+            <div><label>Location (optional)</label><select id="g-loc"><option value="">—</option>${state.locations.map((l) => `<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></div>
+            <div><label>Valid for (minutes)</label><input id="g-mins" type="number" min="5" max="720" placeholder="meeting length" /></div>
+          </div>
+          <label style="margin-top:12px">What is this meeting for?</label>
+          <textarea id="g-agenda" placeholder="Optional. Shown to attendees when they check in.">${esc(b.dataset.agenda)}</textarea>
+          <div id="g-msg"></div>
+        </div>`)
+
+        openModal({
+          title: `Check-in code — ${b.dataset.title}`,
+          body,
+          confirmLabel: 'Generate code',
+          onConfirm: async (close) => {
+            const mins = $('#g-mins', body).value
+            try {
+              await req(`/v1/meetings/${b.dataset.id}/checkin-code`, {
+                method: 'POST',
+                body: {
+                  venue: $('#g-venue', body).value.trim(),
+                  agenda: $('#g-agenda', body).value.trim(),
+                  locationId: $('#g-loc', body).value || null,
+                  ...(mins ? { validForMinutes: Number(mins) } : {}),
+                },
+              })
+              close()
+              await meetingsPanel()
+            } catch (e) {
+              $('#g-msg', body).innerHTML = notice('bad', formatError(e))
+            }
+          },
+        })
+      })
+    }
+  }
+
+  $('#code-tab-door', section).addEventListener('click', () => {
+    $('#code-tab-door', section).setAttribute('aria-pressed', 'true')
+    $('#code-tab-meetings', section).setAttribute('aria-pressed', 'false')
+    doorPanel()
+  })
+  $('#code-tab-meetings', section).addEventListener('click', () => {
+    $('#code-tab-door', section).setAttribute('aria-pressed', 'false')
+    $('#code-tab-meetings', section).setAttribute('aria-pressed', 'true')
+    void meetingsPanel()
+  })
+
+  doorPanel()
+
   // Stop polling when this view is replaced.
   new MutationObserver((_m, obs) => {
-    if (!document.contains(section)) { clearInterval(timer); obs.disconnect() }
+    if (!document.contains(section)) { stop(); obs.disconnect() }
   }).observe(document.getElementById('main'), { childList: true })
 
   return section

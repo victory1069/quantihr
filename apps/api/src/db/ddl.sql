@@ -533,6 +533,15 @@ create table if not exists meetings (
   source                       text not null default 'google_meet',
   status                       text not null default 'scheduled',
   location_id                  uuid references locations(id) on delete set null,
+  -- Free text, because a physical meeting is as often "Boardroom, 3rd floor"
+  -- or a customer's office as it is one of the configured locations.
+  venue                        text,
+  agenda                       text,
+  -- A meeting code is fixed for the sitting rather than rotating like the
+  -- door code: a rotation partway through would lock out the person who
+  -- arrived late, which is exactly who still needs to check in.
+  checkin_code                 text,
+  checkin_code_expires_at      timestamptz,
   recording_s3_key             text,
   transcript_s3_key            text,
   route_to_hr                  boolean not null default false,
