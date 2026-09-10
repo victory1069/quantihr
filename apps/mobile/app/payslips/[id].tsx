@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   net: { fontSize: font.size.display, fontWeight: font.weight.bold, color: colour.text },
   netSub: { fontSize: font.size.sm, color: colour.textMuted },
 
-  explainer: { backgroundColor: colour.primarySoft, borderColor: '#BFDBFE' },
+  explainer: { backgroundColor: colour.primarySoft, borderColor: colour.primaryBorder },
   explainerTitle: { fontSize: font.size.md, fontWeight: font.weight.semibold, color: colour.primary },
   explainerBody: { fontSize: font.size.md, color: colour.text, lineHeight: 22 },
   changes: { gap: space.xs, paddingTop: space.sm },

@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     backgroundColor: colour.warningSoft,
     borderWidth: 1,
-    borderColor: 'rgba(255,176,32,0.35)',
+    borderColor: colour.warning,
   },
   dueText: {
     fontSize: font.size.xs,

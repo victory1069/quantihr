@@ -146,7 +146,7 @@ const styles = StyleSheet.create({
     fontFamily: font.family,
   },
 
-  answer: { borderColor: 'rgba(123,92,255,0.35)' },
+  answer: { borderColor: colour.primaryBorder },
   answerText: {
     fontSize: font.size.md,
     color: colour.text,

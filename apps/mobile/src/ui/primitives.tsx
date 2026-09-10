@@ -4,10 +4,15 @@
  * These exist so a screen never hand-rolls a stat tile or an uppercase label
  * and drifts by two pixels from the one next to it. Anything appearing on more
  * than two screens belongs here.
+ *
+ * As in `components.tsx`: layout in the stylesheet, colour resolved at render
+ * through `useColour()` so the app follows the system appearance.
  */
 
-import type { ReactNode } from 'react'
+import { useEffect, useRef, type ReactNode } from 'react'
 import {
+  Animated,
+  Easing,
   Pressable,
   StyleSheet,
   Text,
@@ -16,7 +21,7 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native'
-import { colour, font, radius, space } from './theme'
+import { font, motion, radius, space, useColour, type Palette } from './theme'
 
 /**
  * A recorded figure. Always mono, so numbers align down a column and read as
@@ -33,8 +38,9 @@ export function Figure({
   tone?: 'default' | 'muted' | 'primary' | 'success' | 'warning' | 'danger'
   style?: StyleProp<TextStyle>
 }) {
+  const c = useColour()
   return (
-    <Text style={[styles.figure, figureSize[size], { color: figureTone[tone] }, style]}>
+    <Text style={[styles.figure, figureSize[size], { color: figureTone(c)[tone] }, style]}>
       {children}
     </Text>
   )
@@ -50,7 +56,8 @@ export function Label({
   tone?: 'faint' | 'primary' | 'accent' | 'violet'
   style?: StyleProp<TextStyle>
 }) {
-  return <Text style={[styles.label, { color: labelTone[tone] }, style]}>{children}</Text>
+  const c = useColour()
+  return <Text style={[styles.label, { color: labelTone(c)[tone] }, style]}>{children}</Text>
 }
 
 /**
@@ -72,13 +79,18 @@ export function Stat({
   tone?: 'default' | 'primary' | 'success' | 'warning'
   style?: StyleProp<ViewStyle>
 }) {
+  const c = useColour()
   return (
-    <View style={[styles.stat, style]}>
-      <Text style={styles.statLabel}>{label}</Text>
+    <View
+      style={[styles.stat, { backgroundColor: c.surface, borderColor: c.border }, style]}
+    >
+      <Text style={[styles.statLabel, { color: c.textMuted }]}>{label}</Text>
       <Figure size="xl" tone={tone === 'default' ? 'default' : tone}>
         {value}
       </Figure>
-      {caption ? <Text style={styles.statCaption}>{caption}</Text> : null}
+      {caption ? (
+        <Text style={[styles.statCaption, { color: c.textFaint }]}>{caption}</Text>
+      ) : null}
     </View>
   )
 }
@@ -107,15 +119,16 @@ export function DataRow({
   mono?: boolean
   last?: boolean
 }) {
+  const c = useColour()
   return (
-    <View style={[styles.dataRow, !last && styles.dataRowDivider]}>
-      <Text style={styles.dataLabel}>{label}</Text>
+    <View style={[styles.dataRow, !last && { borderBottomWidth: 1, borderBottomColor: c.border }]}>
+      <Text style={[styles.dataLabel, { color: c.textMuted }]}>{label}</Text>
       {typeof value === 'string' && mono ? (
         <Figure size="sm" tone={tone}>
           {value}
         </Figure>
       ) : typeof value === 'string' ? (
-        <Text style={[styles.dataValue, { color: figureTone[tone] }]}>{value}</Text>
+        <Text style={[styles.dataValue, { color: figureTone(c)[tone] }]}>{value}</Text>
       ) : (
         value
       )}
@@ -135,41 +148,35 @@ export function Chip({
   onPress?: () => void
   tone?: 'default' | 'violet'
 }) {
-  const Wrapper = onPress ? PressableChip : StaticChip
-  return <Wrapper label={label} selected={selected} onPress={onPress} tone={tone} />
-}
+  const c = useColour()
 
-function StaticChip({ label, selected, tone }: { label: string; selected?: boolean; tone: string }) {
-  return (
-    <View style={[styles.chip, selected && chipSelected[tone]]}>
-      <Text style={[styles.chipLabel, selected && chipLabelSelected[tone]]}>{label}</Text>
-    </View>
-  )
-}
+  const base: StyleProp<ViewStyle> = [
+    styles.chip,
+    { borderColor: c.borderStrong },
+    selected && chipSelected(c)[tone],
+  ]
+  const labelStyle: StyleProp<TextStyle> = [
+    styles.chipLabel,
+    { color: c.text },
+    selected && chipLabelSelected(c)[tone],
+  ]
 
-function PressableChip({
-  label,
-  selected,
-  onPress,
-  tone,
-}: {
-  label: string
-  selected?: boolean
-  onPress?: () => void
-  tone: string
-}) {
+  if (!onPress) {
+    return (
+      <View style={base}>
+        <Text style={labelStyle}>{label}</Text>
+      </View>
+    )
+  }
+
   return (
     <Pressable
       onPress={onPress}
       accessibilityRole="button"
       accessibilityState={{ selected: !!selected }}
-      style={({ pressed }) => [
-        styles.chip,
-        selected && chipSelected[tone],
-        pressed && { opacity: 0.7 },
-      ]}
+      style={({ pressed }) => [base, pressed && { opacity: 0.7 }]}
     >
-      <Text style={[styles.chipLabel, selected && chipLabelSelected[tone]]}>{label}</Text>
+      <Text style={labelStyle}>{label}</Text>
     </Pressable>
   )
 }
@@ -184,6 +191,7 @@ export function Avatar({
   size?: number
   colour?: string
 }) {
+  const c = useColour()
   const initials = name
     .split(/\s+/)
     .filter(Boolean)
@@ -199,15 +207,12 @@ export function Avatar({
           width: size,
           height: size,
           borderRadius: size / 2,
-          backgroundColor: tint ?? colour.surfaceRaised,
+          backgroundColor: tint ?? c.surfaceSunken,
         },
       ]}
     >
       <Text
-        style={[
-          styles.avatarText,
-          { fontSize: size * 0.34, color: tint ? colour.bg : colour.text },
-        ]}
+        style={[styles.avatarText, { fontSize: size * 0.34, color: tint ? c.textInverse : c.text }]}
       >
         {initials}
       </Text>
@@ -215,27 +220,57 @@ export function Avatar({
   )
 }
 
-/** Thin progress track — leave balance, goal progress. */
+/**
+ * Thin progress track — leave balance, goal progress.
+ *
+ * The fill grows into place on mount. Width cannot run on the native driver, so
+ * this is a JS-driven animation; it is affordable because a meter is small,
+ * there are rarely more than a handful on screen, and it runs once.
+ */
 export function Meter({
   value,
   max,
   tone = 'primary',
+  animate = true,
 }: {
   value: number
   max: number
   tone?: 'primary' | 'success' | 'warning'
+  animate?: boolean
 }) {
+  const c = useColour()
   const pct = max <= 0 ? 0 : Math.max(0, Math.min(1, value / max))
+  const grow = useRef(new Animated.Value(animate ? 0 : pct)).current
+
+  useEffect(() => {
+    if (!animate) {
+      grow.setValue(pct)
+      return
+    }
+    Animated.timing(grow, {
+      toValue: pct,
+      duration: motion.slow,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start()
+  }, [grow, pct, animate])
+
   return (
     <View
-      style={styles.meterTrack}
+      style={[styles.meterTrack, { backgroundColor: c.surfaceSunken }]}
       accessibilityRole="progressbar"
       accessibilityValue={{ min: 0, max, now: value }}
     >
-      <View
+      <Animated.View
         style={[
           styles.meterFill,
-          { width: `${pct * 100}%`, backgroundColor: meterTone[tone] },
+          {
+            backgroundColor: meterTone(c)[tone],
+            width: grow.interpolate({
+              inputRange: [0, 1],
+              outputRange: ['0%', '100%'],
+            }),
+          },
         ]}
       />
     </View>
@@ -243,10 +278,7 @@ export function Meter({
 }
 
 const styles = StyleSheet.create({
-  figure: {
-    fontFamily: font.mono,
-    fontVariant: ['tabular-nums'],
-  },
+  figure: { fontFamily: font.mono, fontVariant: ['tabular-nums'] },
 
   label: {
     fontSize: font.size.xs,
@@ -257,23 +289,13 @@ const styles = StyleSheet.create({
 
   stat: {
     flex: 1,
-    backgroundColor: colour.surface,
     borderWidth: 1,
-    borderColor: colour.border,
     borderRadius: radius.lg,
     padding: space.lg,
     gap: space.xs,
   },
-  statLabel: {
-    fontSize: font.size.md,
-    color: colour.textMuted,
-    fontFamily: font.family,
-  },
-  statCaption: {
-    fontSize: font.size.sm,
-    color: colour.textFaint,
-    fontFamily: font.family,
-  },
+  statLabel: { fontSize: font.size.md, fontFamily: font.family },
+  statCaption: { fontSize: font.size.sm, fontFamily: font.family },
   statRow: { flexDirection: 'row', gap: space.md },
 
   dataRow: {
@@ -283,16 +305,7 @@ const styles = StyleSheet.create({
     gap: space.md,
     paddingVertical: space.md,
   },
-  dataRowDivider: {
-    borderBottomWidth: 1,
-    borderBottomColor: colour.border,
-  },
-  dataLabel: {
-    fontSize: font.size.md,
-    color: colour.textMuted,
-    fontFamily: font.family,
-    flexShrink: 1,
-  },
+  dataLabel: { fontSize: font.size.md, fontFamily: font.family, flexShrink: 1 },
   dataValue: {
     fontSize: font.size.md,
     fontFamily: font.family,
@@ -305,27 +318,16 @@ const styles = StyleSheet.create({
     paddingVertical: space.sm,
     borderRadius: radius.pill,
     borderWidth: 1,
-    borderColor: colour.borderStrong,
     backgroundColor: 'transparent',
     minHeight: 40,
     justifyContent: 'center',
   },
-  chipLabel: {
-    fontSize: font.size.md,
-    color: colour.text,
-    fontFamily: font.family,
-    textAlign: 'center',
-  },
+  chipLabel: { fontSize: font.size.md, fontFamily: font.family, textAlign: 'center' },
 
   avatar: { alignItems: 'center', justifyContent: 'center' },
   avatarText: { fontWeight: font.weight.bold, fontFamily: font.family },
 
-  meterTrack: {
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colour.surfaceRaised,
-    overflow: 'hidden',
-  },
+  meterTrack: { height: 6, borderRadius: 3, overflow: 'hidden' },
   meterFill: { height: '100%', borderRadius: 3 },
 })
 
@@ -337,34 +339,34 @@ const figureSize: Record<string, TextStyle> = {
   display: { fontSize: font.size.display, fontWeight: font.weight.bold },
 }
 
-const figureTone: Record<string, string> = {
-  default: colour.text,
-  muted: colour.textMuted,
-  primary: colour.primary,
-  success: colour.success,
-  warning: colour.warning,
-  danger: colour.danger,
-}
+const figureTone = (c: Palette): Record<string, string> => ({
+  default: c.text,
+  muted: c.textMuted,
+  primary: c.primary,
+  success: c.success,
+  warning: c.warning,
+  danger: c.danger,
+})
 
-const labelTone: Record<string, string> = {
-  faint: colour.textFaint,
-  primary: colour.primary,
-  accent: colour.accent,
-  violet: colour.pending,
-}
+const labelTone = (c: Palette): Record<string, string> => ({
+  faint: c.textFaint,
+  primary: c.primary,
+  accent: c.accent,
+  violet: c.pending,
+})
 
-const chipSelected: Record<string, ViewStyle> = {
-  default: { backgroundColor: colour.primary, borderColor: colour.primary },
-  violet: { backgroundColor: colour.pending, borderColor: colour.pending },
-}
+const chipSelected = (c: Palette): Record<string, ViewStyle> => ({
+  default: { backgroundColor: c.primary, borderColor: c.primary },
+  violet: { backgroundColor: c.pending, borderColor: c.pending },
+})
 
-const chipLabelSelected: Record<string, TextStyle> = {
-  default: { color: colour.primaryText, fontWeight: font.weight.semibold },
-  violet: { color: colour.text, fontWeight: font.weight.semibold },
-}
+const chipLabelSelected = (c: Palette): Record<string, TextStyle> => ({
+  default: { color: c.primaryText, fontWeight: font.weight.semibold },
+  violet: { color: c.primaryText, fontWeight: font.weight.semibold },
+})
 
-const meterTone: Record<string, string> = {
-  primary: colour.primary,
-  success: colour.success,
-  warning: colour.warning,
-}
+const meterTone = (c: Palette): Record<string, string> => ({
+  primary: c.primary,
+  success: c.success,
+  warning: c.warning,
+})

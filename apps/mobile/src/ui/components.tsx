@@ -5,11 +5,19 @@
  * most of what makes ten screens look like one product. Spacing here is
  * deliberately loose: `space.lg` between blocks, `space.md` within one.
  *
+ * **Colour is resolved at render, layout is not.** `StyleSheet.create` captures
+ * its values once at import, so anything that changes with the system
+ * appearance has to come from `useColour()` and be applied inline. Layout,
+ * radii and type live in the stylesheet where they belong. The split looks
+ * fussy in a diff and is what lets the app follow the phone's setting without
+ * a restart.
+ *
  * Motion is limited to opacity and transform so it can all run on the native
- * driver. Anything animating layout would jank the moment the outbox drains.
+ * driver. Anything animating layout would jank the moment the outbox drains —
+ * the one exception is `Counter`, which is explained where it is defined.
  */
 
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
   ActivityIndicator,
   Animated,
@@ -20,9 +28,20 @@ import {
   Text,
   View,
   type StyleProp,
+  type TextStyle,
   type ViewStyle,
 } from 'react-native'
-import { colour, elevation, font, MAX_CONTENT_WIDTH, motion, radius, space } from './theme'
+import {
+  font,
+  MAX_CONTENT_WIDTH,
+  motion,
+  radius,
+  shadow,
+  space,
+  useColour,
+  useScheme,
+  type Palette,
+} from './theme'
 
 // ---------------------------------------------------------------------------
 // Frame
@@ -37,11 +56,14 @@ export function Screen({
   scroll?: boolean
   refreshControl?: React.ReactElement
 }) {
+  const c = useColour()
   const inner = <View style={styles.column}>{children}</View>
-  if (!scroll) return <View style={styles.screen}>{inner}</View>
+
+  if (!scroll) return <View style={[styles.screen, { backgroundColor: c.bg }]}>{inner}</View>
+
   return (
     <ScrollView
-      style={styles.screen}
+      style={[styles.screen, { backgroundColor: c.bg }]}
       contentContainerStyle={styles.scrollContent}
       refreshControl={refreshControl}
       keyboardShouldPersistTaps="handled"
@@ -52,44 +74,138 @@ export function Screen({
   )
 }
 
-/** Fades and lifts content in on mount, staggered by `index`. */
+/**
+ * Fades and lifts content in on mount, staggered by `index`.
+ *
+ * The stagger is capped rather than linear: past `motion.staggerCap` items
+ * everything remaining enters together, because a cascade that runs longer than
+ * about a third of a second means the last card lands after the reader has
+ * already moved past it.
+ */
 export function Appear({
   children,
   index = 0,
+  from = 'below',
   style,
 }: {
   children: ReactNode
   index?: number
+  /** Direction the content travels from. `scale` suits a single hero element. */
+  from?: 'below' | 'side' | 'scale'
   style?: StyleProp<ViewStyle>
 }) {
   const progress = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
-    Animated.timing(progress, {
-      toValue: 1,
-      duration: motion.base,
-      // Capped so a long list does not take a second to finish arriving.
-      delay: Math.min(index * 45, 270),
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start()
+    const delay = Math.min(index, motion.staggerCap) * motion.stagger
+    const timer = setTimeout(() => {
+      Animated.spring(progress, {
+        toValue: 1,
+        useNativeDriver: true,
+        ...motion.enter,
+      }).start()
+    }, delay)
+    return () => clearTimeout(timer)
   }, [progress, index])
 
+  const transform =
+    from === 'scale'
+      ? [{ scale: progress.interpolate({ inputRange: [0, 1], outputRange: [0.94, 1] }) }]
+      : from === 'side'
+        ? [{ translateX: progress.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }]
+        : [{ translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [12, 0] }) }]
+
   return (
-    <Animated.View
-      style={[
-        style,
-        {
-          opacity: progress,
-          transform: [
-            { translateY: progress.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) },
-          ],
-        },
-      ]}
-    >
-      {children}
-    </Animated.View>
+    <Animated.View style={[style, { opacity: progress, transform }]}>{children}</Animated.View>
   )
+}
+
+/**
+ * Spring press feedback around arbitrary content.
+ *
+ * Extracted so a tappable row does not have to reimplement the scale each time,
+ * and so the whole app depresses by the same amount.
+ */
+export function Press({
+  children,
+  onPress,
+  scaleTo = 0.97,
+  disabled,
+  style,
+  accessibilityLabel,
+  accessibilityHint,
+}: {
+  children: ReactNode
+  onPress: () => void
+  scaleTo?: number
+  disabled?: boolean
+  style?: StyleProp<ViewStyle>
+  accessibilityLabel?: string
+  accessibilityHint?: string
+}) {
+  const scale = useRef(new Animated.Value(1)).current
+
+  const spring = (to: number) =>
+    Animated.spring(scale, { toValue: to, useNativeDriver: true, ...motion.press }).start()
+
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: !!disabled }}
+      onPress={onPress}
+      disabled={disabled}
+      onPressIn={() => spring(scaleTo)}
+      onPressOut={() => spring(1)}
+      style={style}
+    >
+      <Animated.View style={{ transform: [{ scale }] }}>{children}</Animated.View>
+    </Pressable>
+  )
+}
+
+/**
+ * A figure that counts up to its value.
+ *
+ * The one animation in the kit that cannot use the native driver: there is no
+ * way to interpolate a driven value into formatted text, so this listens on the
+ * JS thread and re-renders. That is affordable because it runs for a third of a
+ * second on mount and then stops — but it is why this is a deliberate component
+ * rather than something to sprinkle on every number.
+ *
+ * It settles rather than bounces. A balance that overshoots and comes back has
+ * shown the employee a figure that was never true.
+ */
+export function Counter({
+  value,
+  format = (n) => String(Math.round(n)),
+  style,
+  duration = motion.slow,
+}: {
+  value: number
+  format?: (n: number) => string
+  style?: StyleProp<TextStyle>
+  duration?: number
+}) {
+  const driver = useRef(new Animated.Value(0)).current
+  const [shown, setShown] = useState(0)
+  const target = useRef(value)
+  target.current = value
+
+  useEffect(() => {
+    const id = driver.addListener(({ value: t }) => setShown(t * target.current))
+    driver.setValue(0)
+    Animated.timing(driver, {
+      toValue: 1,
+      duration,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start()
+    return () => driver.removeListener(id)
+  }, [driver, value, duration])
+
+  return <Text style={style}>{format(shown)}</Text>
 }
 
 export function Card({
@@ -101,48 +217,50 @@ export function Card({
   children: ReactNode
   style?: StyleProp<ViewStyle>
   onPress?: () => void
-  tone?: 'default' | 'primary' | 'warning' | 'danger'
+  tone?: 'default' | 'primary' | 'warning' | 'danger' | 'success'
 }) {
-  const scale = useRef(new Animated.Value(1)).current
+  const c = useColour()
+  const scheme = useScheme()
 
-  const spring = (to: number) =>
-    Animated.spring(scale, {
-      toValue: to,
-      useNativeDriver: true,
-      speed: 40,
-      bounciness: 0,
-    }).start()
-
-  const body = <View style={[styles.card, cardTone[tone], style]}>{children}</View>
+  const body = (
+    <View
+      style={[
+        styles.card,
+        { backgroundColor: c.surface, borderColor: c.border },
+        shadow(scheme).card,
+        cardTone(c)[tone],
+        style,
+      ]}
+    >
+      {children}
+    </View>
+  )
 
   if (!onPress) return body
 
   return (
-    <Pressable
-      onPress={onPress}
-      onPressIn={() => spring(0.985)}
-      onPressOut={() => spring(1)}
-      accessibilityRole="button"
-    >
-      <Animated.View style={{ transform: [{ scale }] }}>{body}</Animated.View>
-    </Pressable>
+    <Press onPress={onPress} scaleTo={0.985}>
+      {body}
+    </Press>
   )
 }
 
 export function SectionTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
+  const c = useColour()
   return (
     <View style={styles.sectionTitleRow}>
-      <Text style={styles.sectionTitle}>{children}</Text>
+      <Text style={[styles.sectionTitle, { color: c.textFaint }]}>{children}</Text>
       {action}
     </View>
   )
 }
 
 export function PageTitle({ children, sub }: { children: ReactNode; sub?: string }) {
+  const c = useColour()
   return (
     <View style={styles.pageTitleWrap}>
-      <Text style={styles.pageTitle}>{children}</Text>
-      {sub ? <Text style={styles.pageSub}>{sub}</Text> : null}
+      <Text style={[styles.pageTitle, { color: c.text }]}>{children}</Text>
+      {sub ? <Text style={[styles.pageSub, { color: c.textMuted }]}>{sub}</Text> : null}
     </View>
   )
 }
@@ -166,11 +284,13 @@ export function Button({
   loading?: boolean
   style?: StyleProp<ViewStyle>
 }) {
+  const c = useColour()
+  const scheme = useScheme()
   const isDisabled = disabled || loading
   const scale = useRef(new Animated.Value(1)).current
 
   const spring = (to: number) =>
-    Animated.spring(scale, { toValue: to, useNativeDriver: true, speed: 40, bounciness: 0 }).start()
+    Animated.spring(scale, { toValue: to, useNativeDriver: true, ...motion.press }).start()
 
   return (
     <Pressable
@@ -185,18 +305,30 @@ export function Button({
       <Animated.View
         style={[
           styles.button,
-          buttonVariant[variant],
-          isDisabled && styles.buttonDisabled,
-          variant === 'primary' && !isDisabled && elevation.glow,
+          buttonVariant(c)[variant],
+          // Disabled is an explicit neutral fill, not a tint of the live
+          // colour. The old system dropped to 40% opacity, which read clearly
+          // as "off" against a near-black ground — on warm white the same
+          // treatment just looks like a paler, still-tappable button.
+          isDisabled && { backgroundColor: c.surfaceSunken, borderColor: c.border },
+          // A real shadow now the ground is light. The old system glowed
+          // because a near-black ground swallows a conventional shadow.
+          variant === 'primary' && !isDisabled && shadow(scheme).card,
           { transform: [{ scale }] },
         ]}
       >
         {loading ? (
-          <ActivityIndicator
-            color={variant === 'primary' ? colour.primaryText : colour.primary}
-          />
+          <ActivityIndicator color={variant === 'primary' ? c.primaryText : c.primary} />
         ) : (
-          <Text style={[styles.buttonLabel, buttonLabelVariant[variant]]}>{label}</Text>
+          <Text
+            style={[
+              styles.buttonLabel,
+              buttonLabelVariant(c)[variant],
+              isDisabled && { color: c.textFaint },
+            ]}
+          >
+            {label}
+          </Text>
         )}
       </Animated.View>
     </Pressable>
@@ -212,28 +344,22 @@ export function Badge({
   tone?: 'neutral' | 'success' | 'warning' | 'danger' | 'info' | 'pending'
   dot?: string
 }) {
+  const c = useColour()
   return (
-    <View style={[styles.badge, badgeTone[tone]]}>
+    <View style={[styles.badge, badgeTone(c)[tone]]}>
       {dot ? <View style={[styles.badgeDot, { backgroundColor: dot }]} /> : null}
-      <Text style={[styles.badgeLabel, badgeLabelTone[tone]]}>{label}</Text>
+      <Text style={[styles.badgeLabel, badgeLabelTone(c)[tone]]}>{label}</Text>
     </View>
   )
 }
 
-export function Row({
-  label,
-  value,
-  muted,
-}: {
-  label: string
-  value: ReactNode
-  muted?: boolean
-}) {
+export function Row({ label, value, muted }: { label: string; value: ReactNode; muted?: boolean }) {
+  const c = useColour()
   return (
     <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={[styles.rowLabel, { color: c.textMuted }]}>{label}</Text>
       {typeof value === 'string' ? (
-        <Text style={[styles.rowValue, muted && styles.rowValueMuted]}>{value}</Text>
+        <Text style={[styles.rowValue, { color: muted ? c.textMuted : c.text }]}>{value}</Text>
       ) : (
         value
       )}
@@ -250,12 +376,15 @@ export function EmptyState({
   body?: string
   action?: ReactNode
 }) {
+  const c = useColour()
   return (
-    <View style={styles.empty}>
-      <Text style={styles.emptyTitle}>{title}</Text>
-      {body ? <Text style={styles.emptyBody}>{body}</Text> : null}
-      {action ? <View style={styles.emptyAction}>{action}</View> : null}
-    </View>
+    <Appear from="scale">
+      <View style={styles.empty}>
+        <Text style={[styles.emptyTitle, { color: c.text }]}>{title}</Text>
+        {body ? <Text style={[styles.emptyBody, { color: c.textMuted }]}>{body}</Text> : null}
+        {action ? <View style={styles.emptyAction}>{action}</View> : null}
+      </View>
+    </Appear>
   )
 }
 
@@ -269,18 +398,29 @@ export function ErrorNotice({
   tone?: 'danger' | 'warning' | 'info' | 'success'
   action?: ReactNode
 }) {
+  const c = useColour()
+  const accent = noticeAccent(c)[tone]!
+
   return (
-    <View style={[styles.notice, noticeTone[tone]]}>
-      <View style={[styles.noticeBar, { backgroundColor: noticeAccent[tone] }]} />
-      <View style={styles.noticeBody}>
-        <Text style={[styles.noticeText, { color: noticeAccent[tone] }]}>{message}</Text>
-        {action}
+    <Appear from="scale">
+      <View style={[styles.notice, noticeTone(c)[tone]]}>
+        <View style={[styles.noticeBar, { backgroundColor: accent }]} />
+        <View style={styles.noticeBody}>
+          <Text style={[styles.noticeText, { color: accent }]}>{message}</Text>
+          {action}
+        </View>
       </View>
-    </View>
+    </Appear>
   )
 }
 
-/** Shimmering placeholder. Content-shaped, so layout does not jump on load. */
+/**
+ * Shimmering placeholder. Content-shaped, so layout does not jump on load.
+ *
+ * A travelling highlight rather than an opacity pulse: on a light ground a
+ * pulse is nearly invisible, and the sweep reads unambiguously as "loading"
+ * rather than "disabled".
+ */
 export function Skeleton({
   height = 16,
   width = '100%',
@@ -290,49 +430,57 @@ export function Skeleton({
   width?: number | string
   style?: StyleProp<ViewStyle>
 }) {
-  const shimmer = useRef(new Animated.Value(0)).current
+  const c = useColour()
+  const sweep = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
     const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(shimmer, {
-          toValue: 1,
-          duration: 800,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(shimmer, {
-          toValue: 0,
-          duration: 800,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-      ]),
+      Animated.timing(sweep, {
+        toValue: 1,
+        duration: 1200,
+        easing: Easing.inOut(Easing.quad),
+        useNativeDriver: true,
+      }),
     )
     loop.start()
     return () => loop.stop()
-  }, [shimmer])
+  }, [sweep])
 
   return (
-    <Animated.View
+    <View
       style={[
         styles.skeleton,
-        { height, width: width as number },
-        { opacity: shimmer.interpolate({ inputRange: [0, 1], outputRange: [0.35, 0.75] }) },
+        { height, width: width as number, backgroundColor: c.skeleton },
         style,
       ]}
-    />
+    >
+      <Animated.View
+        style={[
+          styles.skeletonSweep,
+          {
+            backgroundColor: c.skeletonHighlight,
+            transform: [
+              { translateX: sweep.interpolate({ inputRange: [0, 1], outputRange: [-160, 320] }) },
+              { skewX: '-18deg' },
+            ],
+          },
+        ]}
+      />
+    </View>
   )
 }
 
 export function Divider() {
-  return <View style={styles.divider} />
+  const c = useColour()
+  return <View style={[styles.divider, { backgroundColor: c.border }]} />
 }
 
 // ---------------------------------------------------------------------------
+// Layout only — nothing here varies by scheme
+// ---------------------------------------------------------------------------
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: colour.bg },
+  screen: { flex: 1 },
   scrollContent: { paddingHorizontal: space.lg, paddingBottom: space.xxxl },
   column: {
     width: '100%',
@@ -342,29 +490,20 @@ const styles = StyleSheet.create({
   },
 
   card: {
-    backgroundColor: colour.surface,
     borderRadius: radius.lg,
     padding: space.lg,
     borderWidth: 1,
-    borderColor: colour.border,
     gap: space.md,
-    ...elevation.card,
   },
 
   pageTitleWrap: { paddingTop: space.md, gap: space.xs },
   pageTitle: {
     fontSize: font.size.xxl,
     fontWeight: font.weight.bold,
-    color: colour.text,
     letterSpacing: font.tracking.tight,
     fontFamily: font.family,
   },
-  pageSub: {
-    fontSize: font.size.md,
-    color: colour.textMuted,
-    lineHeight: 22,
-    fontFamily: font.family,
-  },
+  pageSub: { fontSize: font.size.md, lineHeight: 22, fontFamily: font.family },
 
   sectionTitleRow: {
     flexDirection: 'row',
@@ -375,7 +514,6 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: font.size.xs,
     fontWeight: font.weight.semibold,
-    color: colour.textFaint,
     textTransform: 'uppercase',
     letterSpacing: font.tracking.wide,
     fontFamily: font.family,
@@ -391,7 +529,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'transparent',
   },
-  buttonDisabled: { opacity: 0.4 },
   buttonLabel: {
     fontSize: font.size.md,
     fontWeight: font.weight.semibold,
@@ -410,11 +547,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
   },
   badgeDot: { width: 7, height: 7, borderRadius: 4 },
-  badgeLabel: {
-    fontSize: font.size.xs,
-    fontWeight: font.weight.semibold,
-    fontFamily: font.family,
-  },
+  badgeLabel: { fontSize: font.size.xs, fontWeight: font.weight.semibold, fontFamily: font.family },
 
   row: {
     flexDirection: 'row',
@@ -423,102 +556,95 @@ const styles = StyleSheet.create({
     paddingVertical: space.sm,
     gap: space.md,
   },
-  rowLabel: {
-    fontSize: font.size.md,
-    color: colour.textMuted,
-    flexShrink: 1,
-    fontFamily: font.family,
-  },
+  rowLabel: { fontSize: font.size.md, flexShrink: 1, fontFamily: font.family },
   rowValue: {
     fontSize: font.size.md,
-    color: colour.text,
     fontWeight: font.weight.medium,
     textAlign: 'right',
     flexShrink: 1,
     fontFamily: font.family,
   },
-  rowValueMuted: { color: colour.textMuted, fontWeight: font.weight.regular },
 
   empty: { alignItems: 'center', paddingVertical: space.xl, gap: space.sm },
   emptyTitle: {
     fontSize: font.size.lg,
     fontWeight: font.weight.semibold,
-    color: colour.text,
     fontFamily: font.family,
     letterSpacing: font.tracking.snug,
   },
   emptyBody: {
     fontSize: font.size.md,
-    color: colour.textMuted,
     textAlign: 'center',
     lineHeight: 22,
     fontFamily: font.family,
   },
   emptyAction: { marginTop: space.sm, alignSelf: 'stretch' },
 
-  notice: {
-    borderRadius: radius.md,
-    borderWidth: 1,
-    flexDirection: 'row',
-    overflow: 'hidden',
-  },
+  notice: { borderRadius: radius.md, borderWidth: 1, flexDirection: 'row', overflow: 'hidden' },
   noticeBar: { width: 3 },
   noticeBody: { flex: 1, padding: space.md, gap: space.sm },
   noticeText: { fontSize: font.size.md, lineHeight: 22, fontFamily: font.family },
 
-  skeleton: { backgroundColor: colour.surfaceRaised, borderRadius: radius.sm },
-  divider: { height: 1, backgroundColor: colour.border },
+  skeleton: { borderRadius: radius.sm, overflow: 'hidden' },
+  skeletonSweep: { position: 'absolute', top: 0, bottom: 0, width: 90, opacity: 0.9 },
+
+  divider: { height: 1 },
 })
 
-const cardTone: Record<string, ViewStyle> = {
+// ---------------------------------------------------------------------------
+// Tone maps — functions of the palette so they follow the scheme
+// ---------------------------------------------------------------------------
+
+const cardTone = (c: Palette): Record<string, ViewStyle> => ({
   default: {},
-  primary: { backgroundColor: colour.primarySoft, borderColor: colour.primaryBorder },
-  warning: { backgroundColor: colour.warningSoft, borderColor: 'rgba(255,176,32,0.3)' },
-  danger: { backgroundColor: colour.dangerSoft, borderColor: 'rgba(255,61,138,0.3)' },
-}
+  primary: { backgroundColor: c.primarySoft, borderColor: c.primaryBorder },
+  warning: { backgroundColor: c.warningSoft, borderColor: c.warning },
+  danger: { backgroundColor: c.dangerSoft, borderColor: c.danger },
+  success: { backgroundColor: c.successSoft, borderColor: c.success },
+})
 
-const buttonVariant: Record<string, ViewStyle> = {
-  primary: { backgroundColor: colour.primary },
-  secondary: { backgroundColor: colour.primarySoft, borderColor: colour.primaryBorder },
-  danger: { backgroundColor: colour.dangerSoft, borderColor: 'rgba(255,61,138,0.4)' },
+const buttonVariant = (c: Palette): Record<string, ViewStyle> => ({
+  primary: { backgroundColor: c.primary },
+  secondary: { backgroundColor: c.primarySoft, borderColor: c.primaryBorder },
+  danger: { backgroundColor: c.dangerSoft, borderColor: c.danger },
   ghost: { backgroundColor: 'transparent' },
-}
+})
 
-const buttonLabelVariant: Record<string, { color: string }> = {
-  primary: { color: colour.primaryText },
-  secondary: { color: colour.primary },
-  danger: { color: colour.danger },
-  ghost: { color: colour.textMuted },
-}
+const buttonLabelVariant = (c: Palette): Record<string, TextStyle> => ({
+  primary: { color: c.primaryText },
+  secondary: { color: c.primary },
+  danger: { color: c.danger },
+  ghost: { color: c.textMuted },
+})
 
-const badgeTone: Record<string, ViewStyle> = {
-  neutral: { backgroundColor: colour.surfaceRaised, borderColor: colour.border },
-  success: { backgroundColor: colour.successSoft, borderColor: 'rgba(61,220,151,0.3)' },
-  warning: { backgroundColor: colour.warningSoft, borderColor: 'rgba(255,176,32,0.3)' },
-  danger: { backgroundColor: colour.dangerSoft, borderColor: 'rgba(255,61,138,0.3)' },
-  info: { backgroundColor: colour.infoSoft, borderColor: colour.primaryBorder },
-  pending: { backgroundColor: colour.pendingSoft, borderColor: 'rgba(123,92,255,0.3)' },
-}
+const badgeTone = (c: Palette): Record<string, ViewStyle> => ({
+  neutral: { backgroundColor: c.surfaceSunken, borderColor: c.border },
+  success: { backgroundColor: c.successSoft, borderColor: c.successSoft },
+  warning: { backgroundColor: c.warningSoft, borderColor: c.warningSoft },
+  danger: { backgroundColor: c.dangerSoft, borderColor: c.dangerSoft },
+  info: { backgroundColor: c.infoSoft, borderColor: c.primaryBorder },
+  pending: { backgroundColor: c.pendingSoft, borderColor: c.pendingSoft },
+})
 
-const badgeLabelTone: Record<string, { color: string }> = {
-  neutral: { color: colour.textMuted },
-  success: { color: colour.success },
-  warning: { color: colour.warning },
-  danger: { color: colour.danger },
-  info: { color: colour.primary },
-  pending: { color: colour.pending },
-}
+const badgeLabelTone = (c: Palette): Record<string, TextStyle> => ({
+  neutral: { color: c.textMuted },
+  success: { color: c.success },
+  warning: { color: c.warning },
+  danger: { color: c.danger },
+  info: { color: c.primary },
+  pending: { color: c.pending },
+})
 
-const noticeTone: Record<string, ViewStyle> = {
-  danger: { backgroundColor: colour.dangerSoft, borderColor: 'rgba(255,61,138,0.28)' },
-  warning: { backgroundColor: colour.warningSoft, borderColor: 'rgba(255,176,32,0.28)' },
-  info: { backgroundColor: colour.infoSoft, borderColor: colour.primaryBorder },
-  success: { backgroundColor: colour.successSoft, borderColor: 'rgba(61,220,151,0.28)' },
-}
+const noticeTone = (c: Palette): Record<string, ViewStyle> => ({
+  danger: { backgroundColor: c.dangerSoft, borderColor: c.dangerSoft },
+  warning: { backgroundColor: c.warningSoft, borderColor: c.warningSoft },
+  info: { backgroundColor: c.infoSoft, borderColor: c.primaryBorder },
+  success: { backgroundColor: c.successSoft, borderColor: c.successSoft },
+})
 
-const noticeAccent: Record<string, string> = {
-  danger: colour.danger,
-  warning: colour.warning,
-  info: colour.primary,
-  success: colour.success,
-}
+const noticeAccent = (c: Palette): Record<string, string> => ({
+  danger: c.danger,
+  warning: c.warning,
+  info: c.primary,
+  success: c.success,
+})

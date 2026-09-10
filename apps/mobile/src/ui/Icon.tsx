@@ -32,7 +32,7 @@ interface IconProps {
   name: IconName
   size?: number
   color?: string
-  /** Secondary stroke, matching the brand set's #0089B8 accent detail. */
+  /** Secondary stroke. Defaults to none; pass a palette colour to tint it. */
   accent?: string
 }
 

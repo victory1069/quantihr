@@ -290,7 +290,7 @@ const styles = StyleSheet.create({
   },
   meta: { fontSize: font.size.sm, color: colour.textMuted, fontFamily: font.family },
 
-  nudge: { borderColor: 'rgba(255,176,32,0.35)' },
+  nudge: { borderColor: colour.warning },
   body: {
     fontSize: font.size.md,
     color: colour.text,

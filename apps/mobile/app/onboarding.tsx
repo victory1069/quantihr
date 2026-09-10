@@ -998,7 +998,7 @@ const styles = StyleSheet.create({
   },
   iconBadgeSuccess: {
     backgroundColor: colour.successSoft,
-    borderColor: 'rgba(61,220,151,0.35)',
+    borderColor: colour.success,
   },
   successTick: { fontSize: 28, color: colour.success, fontWeight: font.weight.bold },
 
@@ -1030,7 +1030,7 @@ const styles = StyleSheet.create({
     fontWeight: font.weight.semibold,
     fontFamily: font.family,
   },
-  askAnswer: { borderColor: 'rgba(123,92,255,0.35)' },
+  askAnswer: { borderColor: colour.primaryBorder },
 
   permHead: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   permIcon: {
@@ -1050,7 +1050,7 @@ const styles = StyleSheet.create({
   },
   permNote: {
     borderWidth: 1,
-    borderColor: 'rgba(255,176,32,0.3)',
+    borderColor: colour.warning,
     backgroundColor: colour.warningSoft,
     borderRadius: radius.sm,
     padding: space.md,
@@ -1070,8 +1070,8 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     padding: space.lg,
   },
-  openItemWarn: { borderColor: 'rgba(255,176,32,0.4)', backgroundColor: colour.warningSoft },
-  openItemAccent: { borderColor: 'rgba(255,61,138,0.4)', backgroundColor: colour.accentSoft },
+  openItemWarn: { borderColor: colour.warning, backgroundColor: colour.warningSoft },
+  openItemAccent: { borderColor: colour.accent, backgroundColor: colour.accentSoft },
   openDot: { width: 8, height: 8, borderRadius: 4 },
   openTitle: {
     fontSize: font.size.md,

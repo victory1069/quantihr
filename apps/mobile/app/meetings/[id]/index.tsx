@@ -259,7 +259,7 @@ const styles = StyleSheet.create({
   },
   meta: { fontSize: font.size.sm, color: colour.textMuted, fontFamily: font.family },
 
-  review: { borderColor: 'rgba(123,92,255,0.35)' },
+  review: { borderColor: colour.primaryBorder },
   body: {
     fontSize: font.size.md,
     color: colour.text,

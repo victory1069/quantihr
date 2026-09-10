@@ -173,7 +173,7 @@ const styles = StyleSheet.create({
   },
   tabLabelActive: { color: colour.primary },
 
-  waiting: { borderColor: 'rgba(123,92,255,0.35)' },
+  waiting: { borderColor: colour.primaryBorder },
   waitingText: {
     fontSize: font.size.md,
     color: colour.text,

@@ -78,9 +78,9 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     gap: space.sm,
   },
-  pending: { backgroundColor: colour.warningSoft, borderTopColor: '#FDE68A' },
+  pending: { backgroundColor: colour.warningSoft, borderTopColor: colour.warning },
   pendingText: { color: colour.warning, fontSize: font.size.sm, flexShrink: 1 },
-  error: { backgroundColor: colour.dangerSoft, borderTopColor: '#FECACA' },
+  error: { backgroundColor: colour.dangerSoft, borderTopColor: colour.danger },
   errorText: { color: colour.danger, fontSize: font.size.sm, flexShrink: 1 },
   link: { color: colour.danger, fontSize: font.size.sm, fontWeight: font.weight.semibold },
 })
