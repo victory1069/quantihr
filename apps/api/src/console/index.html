@@ -57,7 +57,10 @@
   header .org { color: var(--muted); font-size: 13px; white-space: nowrap; flex-shrink: 0; }
   header .spacer { flex: 1; }
   header #sign-out { flex-shrink: 0; white-space: nowrap; }
-  nav { display: flex; gap: 4px; overflow-x: auto; min-width: 0; }
+  /* The old top-bar nav was a flex row. In a rail it has to stack, and the
+     group headings between the buttons are flex children too, so the direction
+     has to be set on the nav itself rather than left to the buttons. */
+  .sidebar nav { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   nav button {
     background: none; border: 0; padding: 16px 12px; cursor: pointer;
     font: inherit; font-size: 14px; color: var(--muted);
@@ -121,39 +124,299 @@
   }
   .code-meta { text-align: center; color: var(--muted); font-size: 13px; }
 
-  .signin { max-width: 420px; margin: 80px auto; }
   .muted { color: var(--muted); }
   .row-between { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
   .stat { font-size: 26px; font-weight: 700; font-family: var(--mono); font-variant-numeric: tabular-nums; }
   .stat-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+
+  /* -------------------------------------------------------------------------
+   * Sign in — split hero
+   *
+   * The login box sits left and the welcome sits right, over a full-bleed
+   * backdrop. The backdrop is a <video> layered over an animated gradient: drop
+   * a file at src/console/hero.mp4 and it plays; with no file the video 404s
+   * silently and the gradient underneath is what you see. Either way the page
+   * is never broken and never blank, which is why the gradient is the base
+   * layer rather than a fallback attribute.
+   * ---------------------------------------------------------------------- */
+
+  .signin-shell {
+    position: fixed; inset: 0; display: grid;
+    grid-template-columns: minmax(380px, 460px) 1fr;
+    overflow: hidden;
+  }
+
+  .signin-bg { position: absolute; inset: 0; z-index: 0; }
+  .signin-bg::after {
+    /* Scrim. Without it the card and the headline fight the motion behind. */
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(105deg,
+      rgba(24,20,45,.92) 0%, rgba(24,20,45,.78) 38%, rgba(38,28,70,.55) 100%);
+  }
+  .signin-bg video {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+  }
+  .signin-gradient {
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(60% 70% at 15% 20%, #5B4BE8 0%, transparent 60%),
+      radial-gradient(55% 65% at 85% 30%, #FF6B4A 0%, transparent 55%),
+      radial-gradient(70% 80% at 60% 90%, #2A1F6B 0%, transparent 60%),
+      #17132E;
+    filter: saturate(1.1);
+    animation: drift 22s ease-in-out infinite alternate;
+  }
+  @keyframes drift {
+    0%   { transform: scale(1.05) translate3d(0,0,0); }
+    50%  { transform: scale(1.14) translate3d(-2%, 1.5%, 0); }
+    100% { transform: scale(1.08) translate3d(2%, -1%, 0); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .signin-gradient { animation: none; }
+  }
+
+  .signin-panel {
+    position: relative; z-index: 1;
+    display: flex; align-items: center; justify-content: center;
+    padding: 32px;
+  }
+  .signin-card {
+    width: 100%; max-width: 380px;
+    background: rgba(255,255,255,.97);
+    border: 1px solid rgba(255,255,255,.5);
+    border-radius: var(--radius-lg);
+    padding: 32px;
+    box-shadow: 0 30px 70px rgba(10,6,30,.45);
+  }
+  .signin-card h1 { margin: 0 0 6px; font-size: 22px; letter-spacing: -.02em; }
+  .signin-mark { display: flex; align-items: center; gap: 10px; margin-bottom: 20px; }
+  .signin-mark .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--primary); }
+  .signin-mark .dot.accent { background: var(--accent); }
+  .signin-mark span {
+    font-size: 12px; text-transform: uppercase; letter-spacing: .16em;
+    color: var(--muted); font-family: var(--mono);
+  }
+
+  .signin-hero {
+    position: relative; z-index: 1;
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 48px 64px; color: #fff;
+  }
+  .signin-hero h2 {
+    margin: 0; font-size: clamp(34px, 4.6vw, 62px); line-height: 1.04;
+    letter-spacing: -.035em; font-weight: 700; max-width: 12ch;
+  }
+  .signin-hero h2 em {
+    font-style: normal;
+    background: linear-gradient(92deg, #9C8BFF 0%, #FF9B7F 100%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .signin-hero p {
+    margin: 22px 0 0; max-width: 46ch; font-size: 17px; line-height: 1.6;
+    color: rgba(255,255,255,.72);
+  }
+  .signin-hero ul {
+    list-style: none; margin: 34px 0 0; padding: 0;
+    display: flex; flex-wrap: wrap; gap: 10px;
+  }
+  .signin-hero li {
+    font-size: 13px; padding: 7px 13px; border-radius: 999px;
+    background: rgba(255,255,255,.10); border: 1px solid rgba(255,255,255,.18);
+    color: rgba(255,255,255,.86);
+  }
+
+  /* Below this the split stops helping and the hero just pushes the form off. */
+  @media (max-width: 900px) {
+    .signin-shell { grid-template-columns: 1fr; }
+    .signin-hero { display: none; }
+  }
+
+  /* -------------------------------------------------------------------------
+   * Shell — sidebar
+   * ---------------------------------------------------------------------- */
+
+  .shell { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; }
+
+  .sidebar {
+    background: #17132E;
+    border-right: 1px solid rgba(255,255,255,.07);
+    padding: 22px 14px;
+    display: flex; flex-direction: column; gap: 6px;
+    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  }
+  .sidebar .brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 2px; }
+  .sidebar .brand strong { color: #fff; font-size: 16px; letter-spacing: -.01em; }
+  .sidebar .brand .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--primary); }
+  .sidebar .brand .dot.accent { background: var(--accent); }
+  .sidebar .org {
+    padding: 0 10px 16px; color: rgba(255,255,255,.44); font-size: 12px;
+    font-family: var(--mono); letter-spacing: .06em; text-transform: uppercase;
+  }
+  .sidebar .group {
+    padding: 16px 10px 6px; font-size: 10px; text-transform: uppercase;
+    letter-spacing: .18em; color: rgba(255,255,255,.32); font-family: var(--mono);
+  }
+  .sidebar button.nav-item {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    background: none; border: 0; cursor: pointer; font: inherit; font-size: 14px;
+    color: rgba(255,255,255,.66); padding: 9px 10px; border-radius: 10px;
+    text-align: left; transition: background .15s ease, color .15s ease;
+  }
+  .sidebar button.nav-item:hover { background: rgba(255,255,255,.06); color: #fff; }
+  .sidebar button.nav-item[aria-current="true"] {
+    background: rgba(255,255,255,.10); color: #fff; font-weight: 600;
+  }
+  /* The accent bar is what makes the active row legible at a glance in a long
+     list — colour alone is too subtle against a dark rail. */
+  .sidebar button.nav-item[aria-current="true"]::before {
+    content: ''; width: 3px; height: 18px; border-radius: 2px;
+    background: var(--nav-accent, var(--primary)); margin-left: -10px; margin-right: 7px;
+  }
+  .sidebar button.nav-item .ico {
+    width: 8px; height: 8px; border-radius: 3px; flex: none;
+    background: var(--nav-accent, var(--primary)); opacity: .55;
+  }
+  .sidebar button.nav-item[aria-current="true"] .ico { opacity: 1; }
+  .sidebar .grow { flex: 1; }
+  .sidebar .signout {
+    background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12);
+    color: rgba(255,255,255,.82); border-radius: 10px; padding: 10px;
+    cursor: pointer; font: inherit; font-size: 13px;
+  }
+  .sidebar .signout:hover { background: rgba(255,255,255,.12); }
+
+  .content { min-width: 0; }
+
+  @media (max-width: 860px) {
+    .shell { grid-template-columns: 1fr; }
+    .sidebar {
+      position: static; height: auto; flex-direction: row; overflow-x: auto;
+      align-items: center; gap: 4px; padding: 10px;
+    }
+    .sidebar .brand, .sidebar .org, .sidebar .group, .sidebar .grow { display: none; }
+    .sidebar nav { flex-direction: row; overflow-x: auto; }
+    .sidebar button.nav-item { width: auto; white-space: nowrap; }
+    .sidebar button.nav-item[aria-current="true"]::before { display: none; }
+  }
+
+  /* -------------------------------------------------------------------------
+   * Colour on the content side
+   * ---------------------------------------------------------------------- */
+
+  .page-head {
+    display: flex; align-items: flex-end; justify-content: space-between;
+    gap: 16px; flex-wrap: wrap; margin-bottom: 20px;
+  }
+  section > h2 {
+    font-size: 26px; margin: 0 0 4px; letter-spacing: -.025em;
+  }
+
+  /* Stat cards carry a tinted top rule, cycled per position, so a row of four
+     reads as four things rather than one long band. */
+  .grid .card.tinted { position: relative; overflow: hidden; }
+  .grid .card.tinted::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: var(--tint, var(--primary));
+  }
+  .t1 { --tint: #5B4BE8; } .t2 { --tint: #FF6B4A; }
+  .t3 { --tint: #0B7A5C; } .t4 { --tint: #E8A33D; }
+  .t5 { --tint: #2C8FD6; } .t6 { --tint: #B14BE8; }
+
+  .stat-sub { font-size: 12px; color: var(--faint); margin-top: 6px; }
+
+  /* Findings from the analyst. Severity is a left rule, not a background wash —
+     three washed cards in a column stop being scannable. */
+  .finding {
+    border-left: 3px solid var(--border-strong); padding: 12px 0 12px 14px;
+    margin-bottom: 4px;
+  }
+  .finding.act { border-left-color: var(--danger); }
+  .finding.watch { border-left-color: var(--warning); }
+  .finding.info { border-left-color: var(--primary); }
+  .finding p { margin: 0 0 4px; }
+  .finding .evidence {
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+  }
+  .sev {
+    font-size: 10px; text-transform: uppercase; letter-spacing: .14em;
+    font-family: var(--mono); margin-right: 8px;
+  }
+  .sev.act { color: var(--danger); } .sev.watch { color: var(--warning); }
+  .sev.info { color: var(--primary); }
+
+  .bar-row { display: flex; align-items: center; gap: 12px; padding: 7px 0; }
+  .bar-row .name { width: 150px; flex: none; font-size: 14px; }
+  .bar-track { flex: 1; height: 8px; border-radius: 4px; background: var(--surface-alt); overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; background: var(--tint, var(--primary)); }
+  .bar-row .val { width: 74px; text-align: right; font-family: var(--mono); font-size: 13px; }
+
 </style>
 </head>
 <body>
 
 <!-- Sign in -->
-<div id="signin-view" class="signin">
-  <div class="card">
-    <h1 style="margin:0 0 4px;font-size:22px">Quanti HR Console</h1>
-    <p class="hint">Sign in with your HR admin email. We send a one-time link — there are no passwords.</p>
-    <label for="email">Work email</label>
-    <input id="email" type="email" placeholder="you@company.com" autocomplete="email" />
-    <div class="actions">
-      <button class="btn" id="send-link">Email me a link</button>
+<div id="signin-view" class="signin-shell">
+  <div class="signin-bg">
+    <div class="signin-gradient"></div>
+    <!-- Drop a clip at src/console/hero.mp4 and it plays here. With no file the
+         request 404s and the animated gradient behind is what shows, so the
+         page is correct either way. Muted + playsinline so it autoplays at all;
+         browsers block anything with sound. -->
+    <video autoplay muted loop playsinline preload="auto">
+      <source src="/console/hero.mp4" type="video/mp4" />
+    </video>
+  </div>
+
+  <div class="signin-panel">
+    <div class="signin-card">
+      <div class="signin-mark">
+        <span class="dot"></span><span class="dot accent"></span>
+        <span>Quanti HR</span>
+      </div>
+      <h1>Sign in</h1>
+      <p class="hint">We send a one-time link — there are no passwords.</p>
+      <label for="email">Work email</label>
+      <input id="email" type="email" placeholder="you@company.com" autocomplete="email" />
+      <div class="actions">
+        <button class="btn" id="send-link">Email me a link</button>
+      </div>
+      <div id="signin-msg"></div>
     </div>
-    <div id="signin-msg"></div>
+  </div>
+
+  <div class="signin-hero">
+    <h2>Welcome to the <em>Admin HR Console</em></h2>
+    <p>
+      Your people, your policies and your records — in one place, with an audit
+      trail that survives a labour dispute.
+    </p>
+    <ul>
+      <li>Leave &amp; accruals</li>
+      <li>Attendance</li>
+      <li>Reports</li>
+      <li>Documents</li>
+      <li>Payroll</li>
+    </ul>
   </div>
 </div>
 
 <!-- App -->
 <div id="app-view" class="hidden">
-  <header>
-    <h1>Quanti HR</h1>
-    <span class="org" id="org-name"></span>
-    <nav id="nav"></nav>
-    <span class="spacer"></span>
-    <button class="btn ghost" id="sign-out">Sign out</button>
-  </header>
-  <main id="main"></main>
+  <div class="shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="dot"></span><span class="dot accent"></span>
+        <strong>Quanti HR</strong>
+      </div>
+      <div class="org" id="org-name"></div>
+      <nav id="nav"></nav>
+      <div class="grow"></div>
+      <button class="signout" id="sign-out">Sign out</button>
+    </aside>
+    <div class="content">
+      <main id="main"></main>
+    </div>
+  </div>
 </div>
 
 <script type="module">
@@ -256,18 +519,26 @@ $('#sign-out').addEventListener('click', () => {
 
 // --- Shell -----------------------------------------------------------------
 
+// Grouped, because eleven flat items in a rail is a list to search rather than
+// a structure to navigate. `accent` tints the active bar so a section is
+// recognisable before its label is read.
 const TABS = [
-  { id: 'overview',   label: 'Overview' },
-  { id: 'employees',  label: 'Employees' },
-  { id: 'import',     label: 'Bulk import' },
-  { id: 'leave',      label: 'Leave types' },
-  { id: 'payroll',    label: 'Payroll' },
-  { id: 'locations',  label: 'Locations' },
-  { id: 'coverage',   label: 'Coverage' },
-  { id: 'documents',  label: 'Documents' },
-  { id: 'devices',    label: 'Devices' },
-  { id: 'code',       label: 'Check-in code' },
-  { id: 'settings',   label: 'Settings' },
+  { id: 'overview',   label: 'Overview',      group: null,        accent: '#5B4BE8' },
+  { id: 'reports',    label: 'Reports',       group: null,        accent: '#B14BE8' },
+
+  { id: 'employees',  label: 'Employees',     group: 'People',    accent: '#2C8FD6' },
+  { id: 'import',     label: 'Bulk import',   group: 'People',    accent: '#2C8FD6' },
+  { id: 'documents',  label: 'Documents',     group: 'People',    accent: '#2C8FD6' },
+
+  { id: 'leave',      label: 'Leave types',   group: 'Policy',    accent: '#0B7A5C' },
+  { id: 'coverage',   label: 'Coverage',      group: 'Policy',    accent: '#0B7A5C' },
+  { id: 'payroll',    label: 'Payroll',       group: 'Policy',    accent: '#0B7A5C' },
+
+  { id: 'locations',  label: 'Locations',     group: 'Workplace', accent: '#E8A33D' },
+  { id: 'code',       label: 'Check-in code', group: 'Workplace', accent: '#E8A33D' },
+  { id: 'devices',    label: 'Devices',       group: 'Workplace', accent: '#E8A33D' },
+
+  { id: 'settings',   label: 'Settings',      group: 'Org',       accent: '#FF6B4A' },
 ]
 
 let state = { org: null, me: null, employees: [], departments: [], locations: [], leaveTypes: [], schedules: [] }
@@ -297,8 +568,16 @@ async function boot() {
   $('#org-name').textContent = state.me.config.org.name
 
   const nav = $('#nav'); nav.innerHTML = ''
+  let lastGroup
   for (const tab of TABS) {
-    const b = el(`<button data-tab="${tab.id}">${tab.label}</button>`)
+    if (tab.group && tab.group !== lastGroup) {
+      nav.appendChild(el(`<div class="group">${esc(tab.group)}</div>`))
+    }
+    lastGroup = tab.group
+    const b = el(
+      `<button class="nav-item" data-tab="${tab.id}" style="--nav-accent:${tab.accent}">` +
+      `<span class="ico"></span>${esc(tab.label)}</button>`
+    )
     b.addEventListener('click', () => show(tab.id))
     nav.appendChild(b)
   }
@@ -306,7 +585,9 @@ async function boot() {
 }
 
 async function show(tabId) {
-  for (const b of $('#nav').children) b.setAttribute('aria-current', String(b.dataset.tab === tabId))
+  for (const b of $('#nav').querySelectorAll('button.nav-item')) {
+    b.setAttribute('aria-current', String(b.dataset.tab === tabId))
+  }
   const main = $('#main')
   main.innerHTML = '<p class="muted">Loading…</p>'
   try { main.innerHTML = ''; main.appendChild(await VIEWS[tabId]()) }
@@ -335,15 +616,142 @@ VIEWS.overview = async () => {
     <h2>Overview</h2>
     <p class="lede">${esc(state.me.config.org.name)} · ${esc(state.me.config.org.timezone)}</p>
     <div class="grid">
-      <div class="card"><div class="stat">${active}</div><div class="stat-label">Active employees</div></div>
-      <div class="card"><div class="stat">${state.locations.length}</div><div class="stat-label">Locations</div></div>
-      <div class="card"><div class="stat">${state.leaveTypes.length}</div><div class="stat-label">Leave types</div></div>
-      <div class="card"><div class="stat">${pendingDevices.devices.length}</div><div class="stat-label">Devices awaiting approval</div></div>
+      <div class="card tinted t1"><div class="stat">${active}</div><div class="stat-label">Active employees</div></div>
+      <div class="card tinted t5"><div class="stat">${state.locations.length}</div><div class="stat-label">Locations</div></div>
+      <div class="card tinted t3"><div class="stat">${state.leaveTypes.length}</div><div class="stat-label">Leave types</div></div>
+      <div class="card tinted t4"><div class="stat">${pendingDevices.devices.length}</div><div class="stat-label">Devices awaiting approval</div></div>
     </div>
     ${state.locations.length === 0 ? notice('warn', 'No locations yet. Add one under Locations before anyone can check in.') : ''}
     ${state.leaveTypes.length === 0 ? notice('warn', 'No leave types yet. Add at least one so employees can request leave.') : ''}
   </section>`)
 }
+
+VIEWS.reports = async () => {
+  // Default to the month just gone: a part-month reads as a collapse in leave
+  // taken, and the first thing anyone would do with that is misread it.
+  const now = new Date()
+  const end = new Date(now.getFullYear(), now.getMonth(), 0)
+  const start = new Date(end.getFullYear(), end.getMonth(), 1)
+  const iso = (d) => d.toISOString().slice(0, 10)
+
+  const section = el(`<section>
+    <div class="page-head">
+      <div>
+        <h2>Reports</h2>
+        <p class="lede">Leave analysis. Every figure is computed from your records; the commentary reads them.</p>
+      </div>
+      <div class="row-between" style="gap:8px">
+        <input id="rep-from" type="date" value="${iso(start)}" style="width:auto" />
+        <input id="rep-to" type="date" value="${iso(end)}" style="width:auto" />
+        <button class="btn" id="rep-run">Run</button>
+      </div>
+    </div>
+    <div id="rep-body"><p class="muted">Choose a period and press Run.</p></div>
+  </section>`)
+
+  const body = section.querySelector('#rep-body')
+
+  section.querySelector('#rep-run').addEventListener('click', async () => {
+    const from = section.querySelector('#rep-from').value
+    const to = section.querySelector('#rep-to').value
+    if (!from || !to) { body.innerHTML = notice('warn', 'Pick both dates.'); return }
+    if (from > to) { body.innerHTML = notice('warn', 'The start date is after the end date.'); return }
+
+    body.innerHTML = '<p class="muted">Reading the records…</p>'
+    try {
+      const r = await req(`/v1/admin/reports/leave?from=${from}&to=${to}`)
+      body.innerHTML = ''
+      body.appendChild(renderReport(r))
+    } catch (e) {
+      body.innerHTML = notice('bad', e.message)
+    }
+  })
+
+  return section
+}
+
+function renderReport(r) {
+  const f = r.facts
+  const pct = (n, d) => (d > 0 ? Math.round((n / d) * 100) : 0)
+
+  const stat = (tint, value, label, sub) =>
+    `<div class="card tinted ${tint}">
+       <div class="stat">${value}</div>
+       <div class="stat-label">${esc(label)}</div>
+       ${sub ? `<div class="stat-sub">${esc(sub)}</div>` : ''}
+     </div>`
+
+  // Bars are scaled against the largest row, not against a fixed maximum, so a
+  // quiet month still reads as a shape rather than five slivers.
+  const topDays = Math.max(1, ...f.byDepartment.map((d) => d.daysPerHead))
+  const bars = f.byDepartment.map((d, i) => `
+    <div class="bar-row" style="--tint:${['#5B4BE8','#FF6B4A','#0B7A5C','#E8A33D','#2C8FD6','#B14BE8'][i % 6]}">
+      <div class="name">${esc(d.departmentName)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(d.daysPerHead / topDays) * 100}%"></div></div>
+      <div class="val">${d.daysPerHead} d/head</div>
+    </div>`).join('')
+
+  const types = f.byType.map((t) => `
+    <tr><td>${esc(t.leaveTypeName)}</td><td>${t.requests}</td><td>${t.daysTaken}</td></tr>`).join('')
+
+  const analysis = r.analysis
+    ? `<div class="card">
+         <h3>What this says</h3>
+         <p style="font-size:17px;line-height:1.5;margin:0 0 16px">${esc(analysis_headline(r))}</p>
+         ${r.analysis.findings.map((x) => `
+           <div class="finding ${esc(x.severity)}">
+             <p><span class="sev ${esc(x.severity)}">${esc(x.severity)}</span>${esc(x.finding)}</p>
+             <div class="evidence">${esc(x.evidence)}</div>
+           </div>`).join('')}
+         ${r.analysis.recommendations.length
+            ? `<h3 style="margin-top:20px">What to do</h3><ul style="margin:0;padding-left:18px;line-height:1.7">${
+                r.analysis.recommendations.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`
+            : `<p class="hint" style="margin-top:16px">Nothing needs action this period.</p>`}
+         <p class="hint" style="margin-top:18px">
+           Written by ${esc(r.model || 'the analyst')} from the figures above — it is given no records to count.
+         </p>
+       </div>`
+    : notice('info',
+        'The figures below are complete. Written commentary is unavailable — set ANTHROPIC_API_KEY to enable it.')
+
+  return el(`<div>
+    <div class="grid" style="margin-bottom:16px">
+      ${stat('t1', f.daysTaken, 'Days taken', `${f.requests.approved} approved request(s)`)}
+      ${stat('t2', f.requests.pending, 'Pending', f.approval.overdue > 0 ? `${f.approval.overdue} past 48h` : 'None overdue')}
+      ${stat('t3', f.approval.medianHours + 'h', 'Median approval', `slowest ${f.approval.slowestHours}h`)}
+      ${stat('t4', f.untakenDays, 'Untaken days', 'accrued and owed')}
+    </div>
+
+    ${analysis}
+
+    <div class="card">
+      <h3>Absence by department</h3>
+      <p class="hint">Days per head, so teams of different sizes can be compared.</p>
+      ${bars || '<p class="muted">No approved leave in this period.</p>'}
+    </div>
+
+    <div class="card">
+      <h3>By leave type</h3>
+      <table>
+        <thead><tr><th>Type</th><th>Requests</th><th>Days</th></tr></thead>
+        <tbody>${types || '<tr><td colspan="3" class="muted">Nothing taken.</td></tr>'}</tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Coverage and participation</h3>
+      <table><tbody>
+        <tr><td>Active headcount</td><td>${f.headcount}</td></tr>
+        <tr><td>Took no leave at all</td><td>${f.tookNothing} (${pct(f.tookNothing, f.headcount)}%)</td></tr>
+        <tr><td>Approved against a coverage rule</td><td>${f.overrides}</td></tr>
+        <tr><td>Declined</td><td>${f.requests.declined}</td></tr>
+        <tr><td>Cancelled</td><td>${f.requests.cancelled}</td></tr>
+      </tbody></table>
+    </div>
+  </div>`)
+}
+
+const analysis_headline = (r) => r.analysis?.headline ?? ''
 
 VIEWS.employees = async () => {
   await refreshReference()

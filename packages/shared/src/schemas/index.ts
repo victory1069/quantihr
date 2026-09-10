@@ -45,3 +45,5 @@ export type {
   ExtractedAction,
 } from './meetings.js'
 export { DEFAULT_MEETING_SETTINGS } from './meetings.js'
+export * as reports from './reports.js'
+export type { LeaveFacts, LeaveReport, ReportAnalysis } from './reports.js'

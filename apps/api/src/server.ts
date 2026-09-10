@@ -17,6 +17,7 @@ import { registerAdminRoutes } from './routes/admin.js'
 import { registerPayrollRoutes } from './routes/payroll.js'
 import { registerInviteRoutes } from './routes/invite.js'
 import { registerMeetingRoutes } from './routes/meetings.js'
+import { registerReportRoutes } from './routes/reports.js'
 
 export async function buildServer(db: Database): Promise<FastifyInstance> {
   const app = Fastify({
@@ -59,6 +60,21 @@ export async function buildServer(db: Database): Promise<FastifyInstance> {
   app.get('/console', serveConsole)
   app.get('/console/', serveConsole)
 
+  // Optional backdrop for the sign-in hero. Drop a clip at src/console/hero.mp4
+  // and it plays; with no file this 404s and the page falls back to the
+  // animated gradient underneath, which is the base layer rather than a
+  // fallback attribute precisely so the absence is invisible.
+  app.get('/console/hero.mp4', async (_req, reply) => {
+    try {
+      const clip = await readFile(
+        join(dirname(fileURLToPath(import.meta.url)), 'console/hero.mp4'),
+      )
+      return reply.type('video/mp4').send(clip)
+    } catch {
+      return reply.status(404).send()
+    }
+  })
+
   registerAuthRoutes(app, db)
   registerInviteRoutes(app, db)
   registerMeRoutes(app, db)
@@ -68,6 +84,7 @@ export async function buildServer(db: Database): Promise<FastifyInstance> {
   registerDocumentRoutes(app, db)
   registerPayrollRoutes(app, db)
   registerMeetingRoutes(app, db)
+  registerReportRoutes(app, db)
   registerAdminRoutes(app, db)
 
   return app
