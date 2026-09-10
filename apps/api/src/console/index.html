@@ -142,16 +142,21 @@
 
   .signin-shell {
     position: fixed; inset: 0; display: grid;
-    grid-template-columns: minmax(380px, 460px) 1fr;
+    grid-template-columns: 1fr minmax(380px, 460px);
     overflow: hidden;
   }
+  /* Placed rather than reordered. The form stays first in the markup so a
+     keyboard or screen-reader user reaches the thing they came for before the
+     welcome copy; grid puts it on the right visually. */
+  .signin-panel { grid-column: 2; grid-row: 1; }
+  .signin-hero  { grid-column: 1; grid-row: 1; }
 
   .signin-bg { position: absolute; inset: 0; z-index: 0; }
   .signin-bg::after {
     /* Scrim. Without it the card and the headline fight the motion behind. */
     content: ''; position: absolute; inset: 0;
     background: linear-gradient(105deg,
-      rgba(24,20,45,.92) 0%, rgba(24,20,45,.78) 38%, rgba(38,28,70,.55) 100%);
+      rgba(20,16,38,.94) 0%, rgba(24,20,45,.80) 46%, rgba(38,28,70,.58) 100%);
   }
   .signin-bg video {
     width: 100%; height: 100%; object-fit: cover; display: block;
@@ -228,6 +233,7 @@
   /* Below this the split stops helping and the hero just pushes the form off. */
   @media (max-width: 900px) {
     .signin-shell { grid-template-columns: 1fr; }
+    .signin-panel { grid-column: 1; }
     .signin-hero { display: none; }
   }
 
