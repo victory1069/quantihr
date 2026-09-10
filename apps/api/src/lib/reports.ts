@@ -19,20 +19,32 @@
 
 import Anthropic from '@anthropic-ai/sdk'
 import { jsonSchemaOutputFormat } from '@anthropic-ai/sdk/helpers/json-schema'
-import { and, sql } from 'drizzle-orm'
+import { and, between, eq, gte, inArray, lte, sql } from 'drizzle-orm'
 import {
   ApiError,
   ERROR_CODES,
+  disputeRateAcceptable,
   schemas,
+  type AttendanceFacts,
   type LeaveFacts,
+  type MeetingsFacts,
+  type PerformanceFacts,
   type ReportAnalysis,
+  type ReportKind,
 } from '@quanti/shared'
 import {
+  attendanceDisputes,
+  attendanceRecords,
   departments,
   employees,
   leaveBalances,
   leaveRequests,
   leaveTypes,
+  meetingActions,
+  meetingDisputes,
+  meetingParticipants,
+  meetingSummaries,
+  meetings,
 } from '../db/schema.js'
 import type { Tx } from '../db/client.js'
 import { anthropic, costOf, extractionAvailable } from './anthropic.js'
@@ -177,6 +189,294 @@ export async function computeLeaveFacts(
   }
 }
 
+
+// ---------------------------------------------------------------------------
+// Attendance
+// ---------------------------------------------------------------------------
+
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+
+export async function computeAttendanceFacts(
+  tx: Tx,
+  from: string,
+  to: string,
+): Promise<AttendanceFacts> {
+  const staff = await tx
+    .select({ id: employees.id, departmentId: employees.departmentId, status: employees.status })
+    .from(employees)
+  const active = staff.filter((e) => e.status === 'active')
+
+  const records = await tx
+    .select({
+      employeeId: attendanceRecords.employeeId,
+      date: attendanceRecords.date,
+      status: attendanceRecords.status,
+      minutesLate: attendanceRecords.minutesLate,
+      recordedOffline: attendanceRecords.recordedOffline,
+    })
+    .from(attendanceRecords)
+    .where(between(attendanceRecords.date, from, to))
+
+  const present = records.filter((r) => r.status === 'present').length
+  const late = records.filter((r) => r.status === 'late').length
+  const absent = records.filter((r) => r.status === 'absent').length
+
+  const lateMinutes = records
+    .filter((r) => r.minutesLate > 0)
+    .map((r) => r.minutesLate)
+    .sort((a, b) => a - b)
+
+  const depts = await tx
+    .select({ id: departments.id, name: departments.name })
+    .from(departments)
+
+  const byDepartment = depts
+    .map((dept) => {
+      const ids = new Set(active.filter((e) => e.departmentId === dept.id).map((e) => e.id))
+      const own = records.filter((r) => ids.has(r.employeeId))
+      const lateHere = own.filter((r) => r.status === 'late').length
+      return {
+        departmentName: dept.name,
+        headcount: ids.size,
+        records: own.length,
+        lateRate: own.length > 0 ? round1((lateHere / own.length) * 100) : 0,
+      }
+    })
+    .filter((d) => d.headcount > 0)
+    .sort((a, b) => b.lateRate - a.lateRate)
+
+  // Weekday distribution. A Monday spike is a commute or rota problem; a flat
+  // spread is an individual one, and separating those is most of the value.
+  const byWeekday = WEEKDAYS.map((weekday, index) => {
+    const own = records.filter((r) => new Date(`${r.date}T00:00:00Z`).getUTCDay() === index)
+    return {
+      weekday,
+      records: own.length,
+      late: own.filter((r) => r.status === 'late').length,
+    }
+  }).filter((d) => d.records > 0)
+
+  const disputes = await tx
+    .select({ id: attendanceDisputes.id })
+    .from(attendanceDisputes)
+    .where(eq(attendanceDisputes.status, 'open'))
+
+  return {
+    from,
+    to,
+    headcount: active.length,
+    records: records.length,
+    present,
+    late,
+    absent,
+    punctualityRate:
+      present + late > 0 ? round1((present / (present + late)) * 100) : 0,
+    totalMinutesLate: records.reduce((sum, r) => sum + r.minutesLate, 0),
+    medianMinutesLate: median(lateMinutes),
+    recordedOffline: records.filter((r) => r.recordedOffline).length,
+    openDisputes: disputes.length,
+    byDepartment,
+    byWeekday,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Performance
+// ---------------------------------------------------------------------------
+
+/**
+ * Below this many completed tasks an individual median is noise, and showing
+ * it invites a comparison the data cannot support. Team figures are always
+ * shown; per-person medians are withheld until there is enough to mean
+ * something.
+ */
+const MIN_OWNER_SAMPLE = 3
+
+export async function computePerformanceFacts(
+  tx: Tx,
+  from: string,
+  to: string,
+): Promise<PerformanceFacts> {
+  const start = new Date(`${from}T00:00:00.000Z`)
+  const end = new Date(`${to}T23:59:59.999Z`)
+
+  // Only confirmed work counts. A draft the host never approved was never
+  // assigned to anyone, and holding someone to it would be indefensible.
+  const rows = await tx
+    .select({
+      id: meetingActions.id,
+      ownerEmployeeId: meetingActions.ownerEmployeeId,
+      status: meetingActions.status,
+      dueDate: meetingActions.dueDate,
+      confirmedAt: meetingActions.confirmedAt,
+      completedAt: meetingActions.completedAt,
+      firstName: employees.firstName,
+      lastName: employees.lastName,
+    })
+    .from(meetingActions)
+    .leftJoin(employees, eq(employees.id, meetingActions.ownerEmployeeId))
+    .where(
+      and(
+        inArray(meetingActions.status, ['confirmed', 'done']),
+        gte(meetingActions.confirmedAt, start),
+        lte(meetingActions.confirmedAt, end),
+      ),
+    )
+
+  const completed = rows.filter((r) => r.status === 'done' && r.completedAt)
+  const outstanding = rows.filter((r) => r.status === 'confirmed')
+  const today = new Date().toISOString().slice(0, 10)
+  const overdue = outstanding.filter((r) => r.dueDate && r.dueDate < today)
+
+  const responseDays = (r: (typeof completed)[number]): number =>
+    (r.completedAt!.getTime() - r.confirmedAt!.getTime()) / 86_400_000
+
+  const owners = new Map<string, { name: string; rows: typeof rows }>()
+  for (const row of rows) {
+    if (!row.ownerEmployeeId) continue
+    const name = `${row.firstName ?? ''} ${row.lastName ?? ''}`.trim() || 'Unknown'
+    const entry = owners.get(row.ownerEmployeeId) ?? { name, rows: [] as typeof rows }
+    entry.rows.push(row)
+    owners.set(row.ownerEmployeeId, entry)
+  }
+
+  const byOwner = [...owners.values()]
+    .map((o) => {
+      const done = o.rows.filter((r) => r.status === 'done' && r.completedAt)
+      return {
+        employeeName: o.name,
+        completed: done.length,
+        overdue: o.rows.filter(
+          (r) => r.status === 'confirmed' && r.dueDate && r.dueDate < today,
+        ).length,
+        medianResponseDays:
+          done.length >= MIN_OWNER_SAMPLE
+            ? round1(median(done.map(responseDays).sort((a, b) => a - b)))
+            : null,
+      }
+    })
+    .sort((a, b) => b.completed - a.completed)
+
+  return {
+    from,
+    to,
+    assigned: rows.length,
+    completed: completed.length,
+    outstanding: outstanding.length,
+    overdue: overdue.length,
+    completionRate: rows.length > 0 ? round1((completed.length / rows.length) * 100) : 0,
+    medianResponseDays:
+      completed.length >= MIN_OWNER_SAMPLE
+        ? round1(median(completed.map(responseDays).sort((a, b) => a - b)))
+        : null,
+    unassigned: rows.filter((r) => !r.ownerEmployeeId).length,
+    minSample: MIN_OWNER_SAMPLE,
+    byOwner,
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Meetings
+// ---------------------------------------------------------------------------
+
+export async function computeMeetingsFacts(
+  tx: Tx,
+  from: string,
+  to: string,
+): Promise<MeetingsFacts> {
+  const start = new Date(`${from}T00:00:00.000Z`)
+  const end = new Date(`${to}T23:59:59.999Z`)
+
+  const rows = await tx
+    .select({
+      id: meetings.id,
+      status: meetings.status,
+      resolution: meetings.attendanceResolution,
+      actualStart: meetings.actualStart,
+      actualEnd: meetings.actualEnd,
+    })
+    .from(meetings)
+    .where(and(gte(meetings.scheduledStart, start), lte(meetings.scheduledStart, end)))
+
+  const ids = rows.map((r) => r.id)
+
+  const totalMinutes = rows.reduce((sum, r) => {
+    if (!r.actualStart || !r.actualEnd) return sum
+    return sum + (r.actualEnd.getTime() - r.actualStart.getTime()) / 60_000
+  }, 0)
+
+  const actions =
+    ids.length > 0
+      ? await tx
+          .select({ status: meetingActions.status })
+          .from(meetingActions)
+          .where(inArray(meetingActions.meetingId, ids))
+      : []
+
+  const participants =
+    ids.length > 0
+      ? await tx
+          .select({ status: meetingParticipants.attendanceStatus })
+          .from(meetingParticipants)
+          .where(inArray(meetingParticipants.meetingId, ids))
+      : []
+
+  const disputes =
+    ids.length > 0
+      ? await tx
+          .select({ id: meetingDisputes.id })
+          .from(meetingDisputes)
+          .where(inArray(meetingDisputes.meetingId, ids))
+      : []
+
+  const summaries =
+    ids.length > 0
+      ? await tx
+          .select({ cost: meetingSummaries.costUsd })
+          .from(meetingSummaries)
+          .where(inArray(meetingSummaries.meetingId, ids))
+      : []
+
+  const confirmed = actions.filter((a) => a.status === 'confirmed' || a.status === 'done').length
+  const dismissed = actions.filter((a) => a.status === 'dismissed').length
+  const decided = confirmed + dismissed
+
+  // Records the attendance engine actually stood behind. A voided meeting
+  // produced rows that hold nobody to anything, so counting them would inflate
+  // the denominator and flatter the dispute rate.
+  const countedRecords = participants.filter((p) => p.status && p.status !== 'void').length
+
+  return {
+    from,
+    to,
+    held: rows.filter((r) => r.resolution === 'recorded').length,
+    didNotOccur: rows.filter((r) => r.resolution === 'did_not_occur').length,
+    tooShort: rows.filter((r) => r.resolution === 'too_short').length,
+    totalMinutes: Math.round(totalMinutes),
+    actionsExtracted: actions.length,
+    actionsConfirmed: confirmed,
+    actionsDismissed: dismissed,
+    // The direct measure of over-extraction. A climbing figure means the
+    // summariser is inventing work, which the spec calls the failure that
+    // erodes trust fastest.
+    dismissalRate: decided > 0 ? round1((dismissed / decided) * 100) : 0,
+    awaitingReview: rows.filter((r) => r.status === 'awaiting_review').length,
+    attendanceRecords: countedRecords,
+    disputes: disputes.length,
+    disputeRate: countedRecords > 0 ? round1((disputes.length / countedRecords) * 100) : 0,
+    disputeRateAcceptable: disputeRateAcceptable(disputes.length, countedRecords),
+    llmCostUsd: Math.round(summaries.reduce((sum, s) => sum + num(s.cost), 0) * 1_000_000) / 1_000_000,
+  }
+}
+
+function median(sorted: number[]): number {
+  if (sorted.length === 0) return 0
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 === 1
+    ? sorted[mid]!
+    : (sorted[mid - 1]! + sorted[mid]!) / 2
+}
+
 // ---------------------------------------------------------------------------
 // 2. The interpretation
 // ---------------------------------------------------------------------------
@@ -225,7 +525,10 @@ export interface AnalysisResult {
   costUsd: number
 }
 
-export async function analyseLeave(facts: LeaveFacts): Promise<AnalysisResult | null> {
+export async function analyse(
+  kind: ReportKind,
+  facts: object,
+): Promise<AnalysisResult | null> {
   if (!extractionAvailable()) return null
 
   const model = env().MEETING_MODEL
@@ -243,7 +546,9 @@ export async function analyseLeave(facts: LeaveFacts): Promise<AnalysisResult | 
         {
           role: 'user',
           content:
-            `Leave figures for ${facts.from} to ${facts.to}:\n\n` +
+            `${kind} figures:
+
+` +
             `${JSON.stringify(facts, null, 2)}`,
         },
       ],

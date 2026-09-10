@@ -151,3 +151,113 @@ export const reportEmployeeRow = z.object({
   employeeName: z.string(),
   daysTaken: z.number(),
 })
+
+// ---------------------------------------------------------------------------
+// The other report kinds
+// ---------------------------------------------------------------------------
+
+export const reportKind = z.enum(['leave', 'attendance', 'performance', 'meetings'])
+export type ReportKind = z.infer<typeof reportKind>
+
+/** Shown in the console picker, so the copy lives with the contract. */
+export const REPORT_KINDS: { kind: ReportKind; label: string; blurb: string }[] = [
+  { kind: 'leave', label: 'Leave', blurb: 'Days taken, approval speed and the untaken liability.' },
+  { kind: 'attendance', label: 'Attendance', blurb: 'Punctuality and absence across clock-ins.' },
+  { kind: 'performance', label: 'Performance', blurb: 'Task completion and response time.' },
+  { kind: 'meetings', label: 'Meetings', blurb: 'Volume, action quality and dispute rate.' },
+]
+
+export const attendanceFacts = z.object({
+  from: isoDate,
+  to: isoDate,
+  headcount: z.number().int(),
+  records: z.number().int(),
+  present: z.number().int(),
+  late: z.number().int(),
+  absent: z.number().int(),
+  /** Present as a share of days actually recorded. */
+  punctualityRate: z.number(),
+  totalMinutesLate: z.number().int(),
+  medianMinutesLate: z.number(),
+  recordedOffline: z.number().int(),
+  openDisputes: z.number().int(),
+  byDepartment: z.array(
+    z.object({
+      departmentName: z.string(),
+      headcount: z.number().int(),
+      lateRate: z.number(),
+      records: z.number().int(),
+    }),
+  ),
+  /**
+   * Lateness by weekday. A Monday pattern is a commute or a rota problem; a
+   * flat distribution is an individual one, and telling those apart is most of
+   * what an HR lead wants from this.
+   */
+  byWeekday: z.array(z.object({ weekday: z.string(), records: z.number().int(), late: z.number().int() })),
+})
+
+export const performanceFacts = z.object({
+  from: isoDate,
+  to: isoDate,
+  assigned: z.number().int(),
+  completed: z.number().int(),
+  outstanding: z.number().int(),
+  overdue: z.number().int(),
+  completionRate: z.number(),
+  /** Confirmed to completed. Null when too few finished to have a middle. */
+  medianResponseDays: z.number().nullable(),
+  unassigned: z.number().int(),
+  /**
+   * Per person, and only above `minSample`. A median over one or two tasks is
+   * noise, and publishing it invites a comparison the data cannot support.
+   */
+  minSample: z.number().int(),
+  byOwner: z.array(
+    z.object({
+      employeeName: z.string(),
+      completed: z.number().int(),
+      overdue: z.number().int(),
+      medianResponseDays: z.number().nullable(),
+    }),
+  ),
+})
+
+export const meetingsFacts = z.object({
+  from: isoDate,
+  to: isoDate,
+  held: z.number().int(),
+  didNotOccur: z.number().int(),
+  tooShort: z.number().int(),
+  totalMinutes: z.number().int(),
+  actionsExtracted: z.number().int(),
+  actionsConfirmed: z.number().int(),
+  actionsDismissed: z.number().int(),
+  /**
+   * Share of extracted actions the host threw away. This is the direct measure
+   * of over-extraction, which the spec calls the failure that erodes trust
+   * fastest — a climbing number means the summariser is inventing work.
+   */
+  dismissalRate: z.number(),
+  awaitingReview: z.number().int(),
+  attendanceRecords: z.number().int(),
+  disputes: z.number().int(),
+  /** Against the 2% product-health threshold in the meeting spec §7.4. */
+  disputeRate: z.number(),
+  disputeRateAcceptable: z.boolean(),
+  llmCostUsd: z.number(),
+})
+
+export type AttendanceFacts = z.infer<typeof attendanceFacts>
+export type PerformanceFacts = z.infer<typeof performanceFacts>
+export type MeetingsFacts = z.infer<typeof meetingsFacts>
+
+/** Any report: the shape is identical, only the facts differ. */
+export const reportResponse = z.object({
+  kind: reportKind,
+  facts: z.union([leaveFacts, attendanceFacts, performanceFacts, meetingsFacts]),
+  analysis: reportAnalysis.nullable(),
+  generatedAt: isoInstant,
+  model: z.string().nullable(),
+  costUsd: z.number(),
+})

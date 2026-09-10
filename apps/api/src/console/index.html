@@ -356,6 +356,24 @@
   .bar-fill { height: 100%; border-radius: 4px; background: var(--tint, var(--primary)); }
   .bar-row .val { width: 74px; text-align: right; font-family: var(--mono); font-size: 13px; }
 
+  /* Report picker. Cards rather than a select, because the choice is the whole
+     screen and each option needs a line explaining what it answers. */
+  .kinds { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 10px; margin-bottom: 18px; }
+  .kind {
+    text-align: left; cursor: pointer; font: inherit;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px; position: relative; overflow: hidden;
+  }
+  .kind::before {
+    content: ''; position: absolute; inset: 0 auto 0 0; width: 3px;
+    background: var(--tint, var(--primary)); opacity: .25;
+  }
+  .kind:hover { border-color: var(--border-strong); }
+  .kind[aria-pressed="true"] { border-color: var(--tint, var(--primary)); background: var(--surface); }
+  .kind[aria-pressed="true"]::before { opacity: 1; }
+  .kind strong { display: block; font-size: 15px; margin-bottom: 3px; }
+  .kind span { font-size: 12px; color: var(--muted); line-height: 1.45; }
+
 </style>
 </head>
 <body>
@@ -632,19 +650,28 @@ VIEWS.overview = async () => {
   </section>`)
 }
 
+const REPORT_KINDS = [
+  { kind: 'leave',       label: 'Leave',       tint: '#5B4BE8', blurb: 'Days taken, approval speed, and the untaken liability.' },
+  { kind: 'attendance',  label: 'Attendance',  tint: '#2C8FD6', blurb: 'Punctuality and absence across morning clock-ins.' },
+  { kind: 'performance', label: 'Performance', tint: '#0B7A5C', blurb: 'Task completion and how long work takes to land.' },
+  { kind: 'meetings',    label: 'Meetings',    tint: '#B14BE8', blurb: 'Volume, action quality, and the dispute rate.' },
+]
+
 VIEWS.reports = async () => {
-  // Default to the month just gone: a part-month reads as a collapse in leave
-  // taken, and the first thing anyone would do with that is misread it.
+  // Default to the month just gone: a part-month reads as a collapse in
+  // activity, and the first thing anyone would do with that is misread it.
   const now = new Date()
   const end = new Date(now.getFullYear(), now.getMonth(), 0)
   const start = new Date(end.getFullYear(), end.getMonth(), 1)
   const iso = (d) => d.toISOString().slice(0, 10)
 
+  let kind = 'leave'
+
   const section = el(`<section>
     <div class="page-head">
       <div>
         <h2>Reports</h2>
-        <p class="lede">Leave analysis. Every figure is computed from your records; the commentary reads them.</p>
+        <p class="lede">Every figure is computed from your records. The commentary reads them — it is never given rows to count.</p>
       </div>
       <div class="row-between" style="gap:8px">
         <input id="rep-from" type="date" value="${iso(start)}" style="width:auto" />
@@ -652,12 +679,19 @@ VIEWS.reports = async () => {
         <button class="btn" id="rep-run">Run</button>
       </div>
     </div>
-    <div id="rep-body"><p class="muted">Choose a period and press Run.</p></div>
+    <div class="kinds">
+      ${REPORT_KINDS.map((k) => `
+        <button class="kind" data-kind="${k.kind}" style="--tint:${k.tint}"
+                aria-pressed="${k.kind === kind}">
+          <strong>${esc(k.label)}</strong><span>${esc(k.blurb)}</span>
+        </button>`).join('')}
+    </div>
+    <div id="rep-body"><p class="muted">Pick a report and press Run.</p></div>
   </section>`)
 
   const body = section.querySelector('#rep-body')
 
-  section.querySelector('#rep-run').addEventListener('click', async () => {
+  const run = async () => {
     const from = section.querySelector('#rep-from').value
     const to = section.querySelector('#rep-to').value
     if (!from || !to) { body.innerHTML = notice('warn', 'Pick both dates.'); return }
@@ -665,99 +699,191 @@ VIEWS.reports = async () => {
 
     body.innerHTML = '<p class="muted">Reading the records…</p>'
     try {
-      const r = await req(`/v1/admin/reports/leave?from=${from}&to=${to}`)
+      const r = await req(`/v1/admin/reports/${kind}?from=${from}&to=${to}`)
       body.innerHTML = ''
       body.appendChild(renderReport(r))
     } catch (e) {
       body.innerHTML = notice('bad', e.message)
     }
-  })
+  }
+
+  for (const b of section.querySelectorAll('.kind')) {
+    b.addEventListener('click', () => {
+      kind = b.dataset.kind
+      for (const other of section.querySelectorAll('.kind')) {
+        other.setAttribute('aria-pressed', String(other === b))
+      }
+      // Switching report kind runs it: the picker is the question, and making
+      // someone press Run again to see the answer is a step for nothing.
+      void run()
+    })
+  }
+  section.querySelector('#rep-run').addEventListener('click', run)
 
   return section
+}
+
+// --- rendering -------------------------------------------------------------
+
+const TINTS = ['t1', 't2', 't3', 't4', 't5', 't6']
+
+const statCard = (tint, value, label, sub) =>
+  `<div class="card tinted ${tint}">
+     <div class="stat">${value}</div>
+     <div class="stat-label">${esc(label)}</div>
+     ${sub ? `<div class="stat-sub">${esc(sub)}</div>` : ''}
+   </div>`
+
+// Bars scale against the largest row rather than a fixed maximum, so a quiet
+// period still reads as a shape instead of five slivers.
+function bars(rows) {
+  const top = Math.max(1, ...rows.map((r) => r.value))
+  return rows.map((r, i) => `
+    <div class="bar-row" style="--tint:${['#5B4BE8','#FF6B4A','#0B7A5C','#E8A33D','#2C8FD6','#B14BE8'][i % 6]}">
+      <div class="name">${esc(r.name)}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(r.value / top) * 100}%"></div></div>
+      <div class="val">${esc(r.label)}</div>
+    </div>`).join('')
+}
+
+function renderAnalysis(r) {
+  if (!r.analysis) {
+    return notice('info',
+      'The figures below are complete. Written commentary is unavailable — set ANTHROPIC_API_KEY to enable it.')
+  }
+  return `<div class="card">
+    <h3>What this says</h3>
+    <p style="font-size:17px;line-height:1.5;margin:0 0 16px">${esc(r.analysis.headline)}</p>
+    ${r.analysis.findings.map((x) => `
+      <div class="finding ${esc(x.severity)}">
+        <p><span class="sev ${esc(x.severity)}">${esc(x.severity)}</span>${esc(x.finding)}</p>
+        <div class="evidence">${esc(x.evidence)}</div>
+      </div>`).join('')}
+    ${r.analysis.recommendations.length
+      ? `<h3 style="margin-top:20px">What to do</h3><ul style="margin:0;padding-left:18px;line-height:1.7">${
+          r.analysis.recommendations.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`
+      : `<p class="hint" style="margin-top:16px">Nothing needs action this period.</p>`}
+    <p class="hint" style="margin-top:18px">
+      Written by ${esc(r.model || 'the analyst')} from the figures above — it is given no records to count.
+    </p>
+  </div>`
 }
 
 function renderReport(r) {
   const f = r.facts
   const pct = (n, d) => (d > 0 ? Math.round((n / d) * 100) : 0)
+  let head = ''
+  let rest = ''
 
-  const stat = (tint, value, label, sub) =>
-    `<div class="card tinted ${tint}">
-       <div class="stat">${value}</div>
-       <div class="stat-label">${esc(label)}</div>
-       ${sub ? `<div class="stat-sub">${esc(sub)}</div>` : ''}
-     </div>`
+  if (r.kind === 'leave') {
+    head = `
+      ${statCard('t1', f.daysTaken, 'Days taken', `${f.requests.approved} approved request(s)`)}
+      ${statCard('t2', f.requests.pending, 'Pending', f.approval.overdue > 0 ? `${f.approval.overdue} past 48h` : 'None overdue')}
+      ${statCard('t3', f.approval.medianHours + 'h', 'Median approval', `slowest ${f.approval.slowestHours}h`)}
+      ${statCard('t4', f.untakenDays, 'Untaken days', 'accrued and owed')}`
+    rest = `
+      <div class="card">
+        <h3>Absence by department</h3>
+        <p class="hint">Days per head, so teams of different sizes can be compared.</p>
+        ${f.byDepartment.length
+          ? bars(f.byDepartment.map((d) => ({ name: d.departmentName, value: d.daysPerHead, label: d.daysPerHead + ' d/head' })))
+          : '<p class="muted">No approved leave in this period.</p>'}
+      </div>
+      <div class="card">
+        <h3>By leave type</h3>
+        <table><thead><tr><th>Type</th><th>Requests</th><th>Days</th></tr></thead>
+        <tbody>${f.byType.map((t) => `<tr><td>${esc(t.leaveTypeName)}</td><td>${t.requests}</td><td>${t.daysTaken}</td></tr>`).join('')
+          || '<tr><td colspan="3" class="muted">Nothing taken.</td></tr>'}</tbody></table>
+      </div>
+      <div class="card">
+        <h3>Coverage and participation</h3>
+        <table><tbody>
+          <tr><td>Active headcount</td><td>${f.headcount}</td></tr>
+          <tr><td>Took no leave at all</td><td>${f.tookNothing} (${pct(f.tookNothing, f.headcount)}%)</td></tr>
+          <tr><td>Approved against a coverage rule</td><td>${f.overrides}</td></tr>
+          <tr><td>Declined</td><td>${f.requests.declined}</td></tr>
+        </tbody></table>
+      </div>`
+  }
 
-  // Bars are scaled against the largest row, not against a fixed maximum, so a
-  // quiet month still reads as a shape rather than five slivers.
-  const topDays = Math.max(1, ...f.byDepartment.map((d) => d.daysPerHead))
-  const bars = f.byDepartment.map((d, i) => `
-    <div class="bar-row" style="--tint:${['#5B4BE8','#FF6B4A','#0B7A5C','#E8A33D','#2C8FD6','#B14BE8'][i % 6]}">
-      <div class="name">${esc(d.departmentName)}</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${(d.daysPerHead / topDays) * 100}%"></div></div>
-      <div class="val">${d.daysPerHead} d/head</div>
-    </div>`).join('')
+  if (r.kind === 'attendance') {
+    head = `
+      ${statCard('t3', f.punctualityRate + '%', 'On time', `${f.present} of ${f.present + f.late} recorded`)}
+      ${statCard('t4', f.late, 'Late arrivals', `median ${f.medianMinutesLate} min`)}
+      ${statCard('t2', f.absent, 'Absent', `${f.records} day(s) recorded`)}
+      ${statCard('t5', f.openDisputes, 'Open disputes', f.recordedOffline > 0 ? `${f.recordedOffline} recorded offline` : 'none pending')}`
+    rest = `
+      <div class="card">
+        <h3>Lateness by weekday</h3>
+        <p class="hint">A Monday pattern is a commute or rota problem. A flat spread is an individual one.</p>
+        ${f.byWeekday.length
+          ? bars(f.byWeekday.map((d) => ({ name: d.weekday, value: d.late, label: d.late + ' / ' + d.records })))
+          : '<p class="muted">No check-ins recorded.</p>'}
+      </div>
+      <div class="card">
+        <h3>Late rate by department</h3>
+        ${f.byDepartment.length
+          ? bars(f.byDepartment.map((d) => ({ name: d.departmentName, value: d.lateRate, label: d.lateRate + '%' })))
+          : '<p class="muted">No departments with recorded check-ins.</p>'}
+      </div>`
+  }
 
-  const types = f.byType.map((t) => `
-    <tr><td>${esc(t.leaveTypeName)}</td><td>${t.requests}</td><td>${t.daysTaken}</td></tr>`).join('')
+  if (r.kind === 'performance') {
+    head = `
+      ${statCard('t1', f.assigned, 'Tasks assigned', `${f.completed} completed`)}
+      ${statCard('t3', f.completionRate + '%', 'Completion rate', `${f.outstanding} still open`)}
+      ${statCard('t4', f.overdue, 'Overdue', f.overdue > 0 ? 'past their due date' : 'nothing late')}
+      ${statCard('t2', f.medianResponseDays === null ? '—' : f.medianResponseDays + 'd', 'Median response',
+          f.medianResponseDays === null ? `fewer than ${f.minSample} completed` : 'confirmed to done')}`
+    rest = `
+      <div class="card">
+        <h3>By person</h3>
+        <p class="hint">
+          A median over fewer than ${f.minSample} completed tasks is noise, so it is withheld rather than
+          shown — this is a workload picture, not a ranking.
+        </p>
+        <table>
+          <thead><tr><th>Person</th><th>Completed</th><th>Overdue</th><th>Median response</th></tr></thead>
+          <tbody>${f.byOwner.map((o) => `<tr>
+            <td>${esc(o.employeeName)}</td><td>${o.completed}</td><td>${o.overdue}</td>
+            <td>${o.medianResponseDays === null ? '<span class="muted">—</span>' : o.medianResponseDays + ' d'}</td>
+          </tr>`).join('') || '<tr><td colspan="4" class="muted">No confirmed tasks in this period.</td></tr>'}</tbody>
+        </table>
+        ${f.unassigned > 0 ? `<p class="hint">${f.unassigned} confirmed task(s) have no owner.</p>` : ''}
+      </div>`
+  }
 
-  const analysis = r.analysis
-    ? `<div class="card">
-         <h3>What this says</h3>
-         <p style="font-size:17px;line-height:1.5;margin:0 0 16px">${esc(analysis_headline(r))}</p>
-         ${r.analysis.findings.map((x) => `
-           <div class="finding ${esc(x.severity)}">
-             <p><span class="sev ${esc(x.severity)}">${esc(x.severity)}</span>${esc(x.finding)}</p>
-             <div class="evidence">${esc(x.evidence)}</div>
-           </div>`).join('')}
-         ${r.analysis.recommendations.length
-            ? `<h3 style="margin-top:20px">What to do</h3><ul style="margin:0;padding-left:18px;line-height:1.7">${
-                r.analysis.recommendations.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>`
-            : `<p class="hint" style="margin-top:16px">Nothing needs action this period.</p>`}
-         <p class="hint" style="margin-top:18px">
-           Written by ${esc(r.model || 'the analyst')} from the figures above — it is given no records to count.
-         </p>
-       </div>`
-    : notice('info',
-        'The figures below are complete. Written commentary is unavailable — set ANTHROPIC_API_KEY to enable it.')
+  if (r.kind === 'meetings') {
+    head = `
+      ${statCard('t1', f.held, 'Meetings held', `${f.totalMinutes} min captured`)}
+      ${statCard('t3', f.actionsConfirmed, 'Actions confirmed', `${f.actionsExtracted} extracted`)}
+      ${statCard('t2', f.dismissalRate + '%', 'Dismissed by hosts', 'over-extraction signal')}
+      ${statCard(f.disputeRateAcceptable ? 't5' : 't2', f.disputeRate + '%', 'Dispute rate',
+          f.disputeRateAcceptable ? 'within the 2% threshold' : 'above the 2% threshold')}`
+    rest = `
+      ${f.disputeRateAcceptable ? '' : notice('warn',
+        'The dispute rate is above 2%. The meeting spec treats that as the point at which attendance data is not trustworthy enough to feed anything consequential — disconnect it until the cause is found.')}
+      ${f.dismissalRate > 30 ? notice('warn',
+        'Hosts are throwing away more than 30% of extracted actions. That is the summariser inventing work, which is the failure that erodes trust fastest.') : ''}
+      <div class="card">
+        <h3>What happened to the meetings</h3>
+        <table><tbody>
+          <tr><td>Ran and recorded</td><td>${f.held}</td></tr>
+          <tr><td>Never ran</td><td>${f.didNotOccur}</td></tr>
+          <tr><td>Too short to record</td><td>${f.tooShort}</td></tr>
+          <tr><td>Still awaiting host review</td><td>${f.awaitingReview}</td></tr>
+          <tr><td>Attendance records produced</td><td>${f.attendanceRecords}</td></tr>
+          <tr><td>Summarisation cost</td><td>$${f.llmCostUsd}</td></tr>
+        </tbody></table>
+      </div>`
+  }
 
   return el(`<div>
-    <div class="grid" style="margin-bottom:16px">
-      ${stat('t1', f.daysTaken, 'Days taken', `${f.requests.approved} approved request(s)`)}
-      ${stat('t2', f.requests.pending, 'Pending', f.approval.overdue > 0 ? `${f.approval.overdue} past 48h` : 'None overdue')}
-      ${stat('t3', f.approval.medianHours + 'h', 'Median approval', `slowest ${f.approval.slowestHours}h`)}
-      ${stat('t4', f.untakenDays, 'Untaken days', 'accrued and owed')}
-    </div>
-
-    ${analysis}
-
-    <div class="card">
-      <h3>Absence by department</h3>
-      <p class="hint">Days per head, so teams of different sizes can be compared.</p>
-      ${bars || '<p class="muted">No approved leave in this period.</p>'}
-    </div>
-
-    <div class="card">
-      <h3>By leave type</h3>
-      <table>
-        <thead><tr><th>Type</th><th>Requests</th><th>Days</th></tr></thead>
-        <tbody>${types || '<tr><td colspan="3" class="muted">Nothing taken.</td></tr>'}</tbody>
-      </table>
-    </div>
-
-    <div class="card">
-      <h3>Coverage and participation</h3>
-      <table><tbody>
-        <tr><td>Active headcount</td><td>${f.headcount}</td></tr>
-        <tr><td>Took no leave at all</td><td>${f.tookNothing} (${pct(f.tookNothing, f.headcount)}%)</td></tr>
-        <tr><td>Approved against a coverage rule</td><td>${f.overrides}</td></tr>
-        <tr><td>Declined</td><td>${f.requests.declined}</td></tr>
-        <tr><td>Cancelled</td><td>${f.requests.cancelled}</td></tr>
-      </tbody></table>
-    </div>
+    <div class="grid" style="margin-bottom:16px">${head}</div>
+    ${renderAnalysis(r)}
+    ${rest}
   </div>`)
 }
-
-const analysis_headline = (r) => r.analysis?.headline ?? ''
 
 VIEWS.employees = async () => {
   await refreshReference()

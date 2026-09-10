@@ -564,6 +564,7 @@ export const meetingActions = pgTable(
     status: text('status').notNull().default('draft'),
     confirmedBy: uuid('confirmed_by').references(() => users.id, { onDelete: 'set null' }),
     confirmedAt: timestamp('confirmed_at', { withTimezone: true }),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
     taskId: uuid('task_id'),
     createdAt: createdAt(),
   },

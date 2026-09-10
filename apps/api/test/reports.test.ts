@@ -13,12 +13,14 @@ import { buildServer } from '../src/server.js'
 import type { Database } from '../src/db/client.js'
 import { departments, employees, leaveBalances, leaveRequests } from '../src/db/schema.js'
 import { computeLeaveFacts } from '../src/lib/reports.js'
+import { signAccessToken } from '../src/lib/tokens.js'
 import { bearer, makeDatabase, makeOrg, type TestOrg } from './helpers.js'
 
 let db: Database
 let app: FastifyInstance
 let org: TestOrg
 let other: TestOrg
+let hrToken: string
 
 const facts = (from = '2026-01-01', to = '2026-12-31') =>
   db.withTenant(org.orgId, async (tx) => computeLeaveFacts(tx, from, to))
@@ -29,6 +31,17 @@ beforeAll(async () => {
   other = await makeOrg(db, 'globex')
   app = await buildServer(db)
   await app.ready()
+
+  // The fixture has an employee and a manager but no HR admin, and these
+  // endpoints are HR-only — without this the access tests could only ever
+  // observe a refusal.
+  hrToken = await signAccessToken({
+    userId: org.managerUserId,
+    orgId: org.orgId,
+    employeeId: org.managerEmployeeId,
+    roles: ['employee', 'hr_admin'],
+    deviceId: 'test-device-hr',
+  })
 })
 
 afterAll(async () => {
@@ -196,5 +209,34 @@ describe('access', () => {
     })
 
     expect((await facts()).daysTaken).toBe(5)
+  })
+})
+
+describe('the other report kinds', () => {
+  const kinds = ['leave', 'attendance', 'performance', 'meetings'] as const
+
+  it.each(kinds)('serves the %s report to an HR admin', async (kind) => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/v1/admin/reports/${kind}?from=2026-01-01&to=2026-12-31`,
+      headers: bearer(hrToken),
+    })
+
+    expect(response.statusCode).toBe(200)
+    expect(response.json().kind).toBe(kind)
+    expect(response.json().facts).toBeTruthy()
+    // The analyst is unconfigured in tests, and the figures must stand without
+    // it — that is the whole failure contract for these reports.
+    expect(response.json().analysis).toBeNull()
+  })
+
+  it('rejects an unknown kind rather than guessing', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v1/admin/reports/salaries?from=2026-01-01&to=2026-12-31',
+      headers: bearer(hrToken),
+    })
+
+    expect(response.statusCode).toBe(422)
   })
 })

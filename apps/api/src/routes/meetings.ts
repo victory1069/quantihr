@@ -1102,7 +1102,10 @@ export function registerMeetingRoutes(app: FastifyInstance, db: Database): void 
         throw new ApiError(ERROR_CODES.NOT_FOUND, 'Task not found', 404)
       }
 
-      await tx.update(meetingActions).set({ status: 'done' }).where(eq(meetingActions.id, id))
+      await tx
+        .update(meetingActions)
+        .set({ status: 'done', completedAt: new Date() })
+        .where(eq(meetingActions.id, id))
     })
 
     return reply.send({ ok: true })

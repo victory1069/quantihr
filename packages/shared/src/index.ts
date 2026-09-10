@@ -20,4 +20,13 @@ export {
   type ExtractionOutput,
   type ExtractedAction,
 } from './schemas/meetings.js'
-export type { LeaveFacts, LeaveReport, ReportAnalysis } from './schemas/reports.js'
+export type {
+  LeaveFacts,
+  LeaveReport,
+  ReportAnalysis,
+  AttendanceFacts,
+  PerformanceFacts,
+  MeetingsFacts,
+  ReportKind,
+} from './schemas/reports.js'
+export { REPORT_KINDS } from './schemas/reports.js'

@@ -639,6 +639,10 @@ create table if not exists meeting_actions (
   status            text not null default 'draft',
   confirmed_by      uuid references users(id) on delete set null,
   confirmed_at      timestamptz,
+  -- Response time is measured confirmed_at -> completed_at. Without this the
+  -- status flips to 'done' and the elapsed time is gone, so a metric that
+  -- feeds performance review would have to be inferred. It is not.
+  completed_at      timestamptz,
   task_id           uuid,
   created_at        timestamptz not null default now()
 );
