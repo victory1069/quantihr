@@ -371,6 +371,31 @@
   .kind:hover { border-color: var(--border-strong); }
   .kind[aria-pressed="true"] { border-color: var(--tint, var(--primary)); background: var(--surface); }
   .kind[aria-pressed="true"]::before { opacity: 1; }
+  .modal-scrim {
+    position: fixed; inset: 0; background: var(--scrim, rgba(28,27,26,.45));
+    display: flex; align-items: flex-start; justify-content: center;
+    padding: 48px 20px; overflow-y: auto; z-index: 50;
+  }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius-lg); width: 100%; max-width: 760px;
+    box-shadow: 0 30px 70px rgba(10,6,30,.25);
+  }
+  .modal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; padding: 20px 22px; border-bottom: 1px solid var(--border);
+  }
+  .modal-head h3 { margin: 0; font-size: 18px; }
+  .modal-body { padding: 22px; }
+  .modal-foot {
+    display: flex; justify-content: flex-end; gap: 10px;
+    padding: 16px 22px; border-top: 1px solid var(--border);
+  }
+  .modal-x {
+    background: none; border: 0; cursor: pointer; font-size: 22px; line-height: 1;
+    color: var(--muted); padding: 4px 8px; border-radius: 8px;
+  }
+  .modal-x:hover { background: var(--surface-alt); color: var(--text); }
   .kind strong { display: block; font-size: 15px; margin-bottom: 3px; }
   .kind span { font-size: 12px; color: var(--muted); line-height: 1.45; }
 
@@ -628,6 +653,57 @@ async function refreshReference() {
 }
 
 // --- Views -----------------------------------------------------------------
+
+/**
+ * A modal, opened from a trigger and closed by anything a person would try.
+ *
+ * Escape and a click on the scrim both close it, because a dialog that can only
+ * be dismissed by finding the right button is the thing people complain about.
+ * Focus moves to the first field on open and returns to the trigger on close,
+ * so a keyboard user is not dropped at the top of the document.
+ */
+function openModal({ title, body, confirmLabel, onConfirm }) {
+  const trigger = document.activeElement
+
+  const scrim = el(`<div class="modal-scrim" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>${esc(title)}</h3>
+        <button class="modal-x" aria-label="Close">&times;</button>
+      </div>
+      <div class="modal-body"></div>
+      <div class="modal-foot">
+        <button class="btn ghost" data-act="cancel">Cancel</button>
+        <button class="btn" data-act="confirm">${esc(confirmLabel)}</button>
+      </div>
+    </div>
+  </div>`)
+
+  scrim.querySelector('.modal-body').appendChild(body)
+
+  const close = () => {
+    scrim.remove()
+    document.removeEventListener('keydown', onKey)
+    if (trigger && document.contains(trigger)) trigger.focus()
+  }
+  const onKey = (e) => { if (e.key === 'Escape') close() }
+
+  scrim.addEventListener('click', (e) => { if (e.target === scrim) close() })
+  scrim.querySelector('.modal-x').addEventListener('click', close)
+  scrim.querySelector('[data-act="cancel"]').addEventListener('click', close)
+  document.addEventListener('keydown', onKey)
+
+  const confirm = scrim.querySelector('[data-act="confirm"]')
+  confirm.addEventListener('click', async () => {
+    confirm.disabled = true
+    try { await onConfirm(close) }
+    finally { confirm.disabled = false }
+  })
+
+  document.body.appendChild(scrim)
+  scrim.querySelector('input, select, textarea')?.focus()
+  return { close, scrim }
+}
 
 const VIEWS = {}
 
@@ -891,34 +967,18 @@ VIEWS.employees = async () => {
   const empName = (id) => { const e = state.employees.find((x) => x.id === id); return e ? `${e.firstName} ${e.lastName}` : '—' }
 
   const section = el(`<section>
-    <h2>Employees</h2>
-    <p class="lede">${state.employees.length} record(s). Adding an employee also creates their sign-in account.</p>
-
-    <div class="card">
-      <h3>Add or update an employee</h3>
-      <p class="hint">Matching an existing employee number updates that record instead of creating a duplicate.</p>
-      <div class="grid">
-        <div><label>Employee number</label><input id="f-num" placeholder="QH-009" /></div>
-        <div><label>First name</label><input id="f-first" /></div>
-        <div><label>Last name</label><input id="f-last" /></div>
-        <div><label>Email</label><input id="f-email" type="email" /></div>
-        <div><label>Job title</label><input id="f-title" /></div>
-        <div><label>Start date</label><input id="f-start" type="date" /></div>
-        <div><label>Department</label><select id="f-dept"><option value="">—</option>${state.departments.map((d) => `<option value="${d.id}">${esc(d.name)}</option>`).join('')}</select></div>
-        <div><label>Location</label><select id="f-loc"><option value="">—</option>${state.locations.map((l) => `<option value="${l.id}">${esc(l.name)}</option>`).join('')}</select></div>
-        <div><label>Manager</label><select id="f-mgr"><option value="">—</option>${state.employees.map((e) => `<option value="${e.id}">${esc(e.firstName + ' ' + e.lastName)}</option>`).join('')}</select></div>
-        <div><label>Schedule</label><select id="f-sched">${state.schedules.map((s) => `<option value="${s.id}">${esc(s.name)}</option>`).join('')}</select></div>
-        <div><label>Employment type</label><select id="f-type"><option value="full_time">Full time</option><option value="part_time">Part time</option><option value="contract">Contract</option><option value="intern">Intern</option></select></div>
-        <div><label>Roles</label><select id="f-roles" multiple size="4"><option value="employee" selected>employee</option><option value="manager">manager</option><option value="hr_admin">hr_admin</option><option value="owner">owner</option></select></div>
+    <div class="page-head">
+      <div>
+        <h2>Employees</h2>
+        <p class="lede">${state.employees.length} record(s). Adding an employee also creates their sign-in account.</p>
       </div>
-      <div class="actions"><button class="btn" id="save-emp">Save employee</button></div>
-      <div id="emp-msg"></div>
+      <button class="btn" id="add-emp">Add employee</button>
     </div>
 
     <div class="card">
       <h3>Directory</h3>
       <div class="table-wrap"><table>
-        <thead><tr><th>#</th><th>Name</th><th>Title</th><th>Department</th><th>Manager</th><th>Started</th><th>Status</th></tr></thead>
+        <thead><tr><th>#</th><th>Name</th><th>Title</th><th>Department</th><th>Manager</th><th>Started</th><th>Status</th><th></th></tr></thead>
         <tbody>${state.employees.map((e) => `<tr>
           <td>${esc(e.employeeNumber)}</td>
           <td>${esc(e.firstName)} ${esc(e.lastName)}<div class="muted" style="font-size:12px">${esc(e.email)}</div></td>
@@ -927,35 +987,77 @@ VIEWS.employees = async () => {
           <td>${esc(empName(e.managerId))}</td>
           <td>${esc(e.startDate)}</td>
           <td><span class="pill ${e.status === 'active' ? 'ok' : 'neutral'}">${esc(e.status)}</span></td>
+          <td><button class="btn ghost edit-emp" data-id="${e.id}">Update</button></td>
         </tr>`).join('')}</tbody>
       </table></div>
     </div>
   </section>`)
 
-  $('#save-emp', section).addEventListener('click', async () => {
-    const roles = [...$('#f-roles', section).selectedOptions].map((o) => o.value)
-    const body = {
-      employeeNumber: $('#f-num', section).value.trim(),
-      firstName: $('#f-first', section).value.trim(),
-      lastName: $('#f-last', section).value.trim(),
-      email: $('#f-email', section).value.trim(),
-      jobTitle: $('#f-title', section).value.trim() || null,
-      startDate: $('#f-start', section).value,
-      departmentId: $('#f-dept', section).value || null,
-      locationId: $('#f-loc', section).value || null,
-      managerId: $('#f-mgr', section).value || null,
-      workScheduleId: $('#f-sched', section).value || null,
-      employmentType: $('#f-type', section).value,
-      status: 'active',
-      roles: roles.length ? roles : ['employee'],
-    }
-    try {
-      await req('/v1/admin/employees', { method: 'POST', body })
-      await show('employees')
-    } catch (e) {
-      $('#emp-msg', section).innerHTML = notice('bad', formatError(e))
-    }
-  })
+  /**
+   * One form for both paths.
+   *
+   * Update prefills and locks the employee number: it is the key the importer
+   * matches on, so letting it be edited here would silently create a second
+   * record on the next spreadsheet upload rather than updating this one.
+   */
+  const form = (existing) => el(`<div>
+    <div class="grid">
+      <div><label>Employee number</label><input id="f-num" placeholder="QH-009" value="${esc(existing?.employeeNumber ?? '')}" ${existing ? 'readonly' : ''} /></div>
+      <div><label>First name</label><input id="f-first" value="${esc(existing?.firstName ?? '')}" /></div>
+      <div><label>Last name</label><input id="f-last" value="${esc(existing?.lastName ?? '')}" /></div>
+      <div><label>Email</label><input id="f-email" type="email" value="${esc(existing?.email ?? '')}" /></div>
+      <div><label>Job title</label><input id="f-title" value="${esc(existing?.jobTitle ?? '')}" /></div>
+      <div><label>Start date</label><input id="f-start" type="date" value="${esc(existing?.startDate ?? '')}" /></div>
+      <div><label>Department</label><select id="f-dept"><option value="">—</option>${state.departments.map((d) => `<option value="${d.id}" ${existing?.departmentId === d.id ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}</select></div>
+      <div><label>Location</label><select id="f-loc"><option value="">—</option>${state.locations.map((l) => `<option value="${l.id}" ${existing?.locationId === l.id ? 'selected' : ''}>${esc(l.name)}</option>`).join('')}</select></div>
+      <div><label>Manager</label><select id="f-mgr"><option value="">—</option>${state.employees.filter((e) => e.id !== existing?.id).map((e) => `<option value="${e.id}" ${existing?.managerId === e.id ? 'selected' : ''}>${esc(e.firstName + ' ' + e.lastName)}</option>`).join('')}</select></div>
+      <div><label>Schedule</label><select id="f-sched">${state.schedules.map((s) => `<option value="${s.id}" ${existing?.workScheduleId === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>
+      <div><label>Employment type</label><select id="f-type">${['full_time','part_time','contract','intern'].map((t) => `<option value="${t}" ${existing?.employmentType === t ? 'selected' : ''}>${t.replace('_',' ')}</option>`).join('')}</select></div>
+      <div><label>Status</label><select id="f-status">${['active','on_leave','suspended','terminated'].map((t) => `<option value="${t}" ${(existing?.status ?? 'active') === t ? 'selected' : ''}>${t.replace('_',' ')}</option>`).join('')}</select></div>
+      <div><label>Roles</label><select id="f-roles" multiple size="4">${['employee','manager','hr_admin','owner'].map((r) => `<option value="${r}" ${(existing?.roles ?? ['employee']).includes(r) ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
+    </div>
+    <div id="emp-msg"></div>
+  </div>`)
+
+  const openEditor = (existing) => {
+    const body = form(existing)
+    openModal({
+      title: existing ? `Update ${existing.firstName} ${existing.lastName}` : 'Add employee',
+      body,
+      confirmLabel: existing ? 'Save changes' : 'Create employee',
+      onConfirm: async (close) => {
+        const roles = [...$('#f-roles', body).selectedOptions].map((o) => o.value)
+        const payload = {
+          employeeNumber: $('#f-num', body).value.trim(),
+          firstName: $('#f-first', body).value.trim(),
+          lastName: $('#f-last', body).value.trim(),
+          email: $('#f-email', body).value.trim(),
+          jobTitle: $('#f-title', body).value.trim() || null,
+          startDate: $('#f-start', body).value,
+          departmentId: $('#f-dept', body).value || null,
+          locationId: $('#f-loc', body).value || null,
+          managerId: $('#f-mgr', body).value || null,
+          workScheduleId: $('#f-sched', body).value || null,
+          employmentType: $('#f-type', body).value,
+          status: $('#f-status', body).value,
+          roles: roles.length ? roles : ['employee'],
+        }
+        try {
+          await req('/v1/admin/employees', { method: 'POST', body: payload })
+          close()
+          await show('employees')
+        } catch (e) {
+          $('#emp-msg', body).innerHTML = notice('bad', formatError(e))
+        }
+      },
+    })
+  }
+
+  $('#add-emp', section).addEventListener('click', () => openEditor(null))
+  for (const b of section.querySelectorAll('.edit-emp')) {
+    b.addEventListener('click', () =>
+      openEditor(state.employees.find((e) => e.id === b.dataset.id)))
+  }
 
   return section
 }
@@ -963,9 +1065,18 @@ VIEWS.employees = async () => {
 VIEWS.import = async () => {
   const section = el(`<section>
     <h2>Bulk import</h2>
-    <p class="lede">Paste CSV. Nothing is written until you have reviewed the preview and pressed Import.</p>
+    <p class="lede">Upload a spreadsheet or paste CSV. Nothing is written until you have reviewed the preview and pressed Import.</p>
     <div class="card">
-      <h3>CSV</h3>
+      <h3>Upload a file</h3>
+      <p class="hint">
+        .xlsx or .csv. The first row must be the column headings — "First Name" and
+        "first_name" are both understood. The file is read, never stored.
+      </p>
+      <input id="file" type="file" accept=".xlsx,.csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" />
+      <div id="file-msg"></div>
+    </div>
+    <div class="card">
+      <h3>Or paste CSV</h3>
       <p class="hint">Required columns: employee_number, first_name, last_name, email, start_date. Optional: phone, job_title, band, role_id, employment_type, end_date.</p>
       <textarea id="csv" spellcheck="false">employee_number,first_name,last_name,email,start_date,job_title
 QH-101,Ada,Lovelace,ada@kanjufoods.test,2026-01-15,Analyst
@@ -1007,6 +1118,40 @@ QH-102,Grace,Hopper,grace@kanjufoods.test,2026-02-01,Engineer</textarea>
       </table></div>`
     $('#commit', section).disabled = result.errorCount > 0 || result.committed
   }
+
+  $('#file', section).addEventListener('change', async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const msg = $('#file-msg', section)
+    msg.innerHTML = '<p class="muted">Reading…</p>'
+    try {
+      if (/\.csv$/i.test(file.name)) {
+        // A CSV is text; there is nothing the server can do with it that the
+        // paste box cannot, so it goes straight into the same textarea and the
+        // person can see exactly what will be imported.
+        $('#csv', section).value = (await file.text()).trim()
+        msg.innerHTML = notice('info', 'Loaded into the box below. Press Validate to preview it.')
+        return
+      }
+      const buf = new Uint8Array(await file.arrayBuffer())
+      let binary = ''
+      for (let i = 0; i < buf.length; i += 1) binary += String.fromCharCode(buf[i])
+      const parsed = await req('/v1/admin/employees/import/parse', {
+        method: 'POST',
+        body: { filename: file.name, contentBase64: btoa(binary) },
+      })
+      lastRows = parsed.rows
+      if (!lastRows.length) {
+        msg.innerHTML = notice('warn', 'That sheet has headings but no rows under them.')
+        return
+      }
+      msg.innerHTML = notice('info',
+        `Read ${lastRows.length} row(s) from "${esc(parsed.sheetName)}". Nothing written yet — validating now.`)
+      render(await req('/v1/admin/employees/import', { method: 'POST', body: { mode: 'validate', rows: lastRows } }))
+    } catch (err) {
+      msg.innerHTML = notice('bad', formatError(err))
+    }
+  })
 
   $('#validate', section).addEventListener('click', async () => {
     try {

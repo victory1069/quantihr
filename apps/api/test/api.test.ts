@@ -23,11 +23,13 @@ import {
 } from '../src/db/schema.js'
 import { runAccrualForOrg } from '../src/jobs/accrual.js'
 import { orgClock } from '../src/lib/time.js'
+import { signAccessToken } from '../src/lib/tokens.js'
 import { bearer, makeDatabase, makeOrg, type TestOrg } from './helpers.js'
 
 let db: Database
 let app: FastifyInstance
 let org: TestOrg
+let hrToken: string
 
 const CODE = 'AB12CD'
 
@@ -36,6 +38,14 @@ beforeAll(async () => {
   org = await makeOrg(db, 'acme')
   app = await buildServer(db)
   await app.ready()
+
+  hrToken = await signAccessToken({
+    userId: org.managerUserId,
+    orgId: org.orgId,
+    employeeId: org.managerEmployeeId,
+    roles: ['employee', 'hr_admin'],
+    deviceId: 'test-device-hr',
+  })
 
   await db.withTenant(org.orgId, async (tx) => {
     await tx
@@ -496,5 +506,90 @@ describe('accrual job', () => {
     // The job owns `accrued`; the request flow owns `taken` and `pending`.
     expect(Number(after[0]!.taken)).toBe(3)
     expect(Number(after[0]!.pending)).toBe(2)
+  })
+})
+
+describe('spreadsheet import', () => {
+  /** Builds a real .xlsx in memory so the parser is exercised, not mocked. */
+  async function workbook(rows: (string | Date)[][]): Promise<string> {
+    const ExcelJS = (await import('exceljs')).default
+    const wb = new ExcelJS.Workbook()
+    const sheet = wb.addWorksheet('Staff')
+    for (const row of rows) sheet.addRow(row)
+    const buf = await wb.xlsx.writeBuffer()
+    return Buffer.from(buf).toString('base64')
+  }
+
+  it('reads rows out of an uploaded sheet', async () => {
+    const contentBase64 = await workbook([
+      ['Employee Number', 'First Name', 'Last Name', 'Email', 'Start Date'],
+      ['QH-501', 'Ada', 'Lovelace', 'ada@acme.test', '2026-01-15'],
+      ['QH-502', 'Grace', 'Hopper', 'grace@acme.test', '2026-02-01'],
+    ])
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/employees/import/parse',
+      headers: bearer(org.managerToken),
+      payload: { filename: 'staff.xlsx', contentBase64 },
+    })
+
+    // The seeded manager is not an HR admin.
+    expect(response.statusCode).toBe(403)
+  })
+
+  it('normalises human column headings', async () => {
+    const contentBase64 = await workbook([
+      ['Employee Number', 'First Name', 'Last Name', 'Email', 'Start Date'],
+      ['QH-501', 'Ada', 'Lovelace', 'ada@acme.test', '2026-01-15'],
+    ])
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/employees/import/parse',
+      headers: bearer(hrToken),
+      payload: { filename: 'staff.xlsx', contentBase64 },
+    })
+
+    expect(response.statusCode).toBe(200)
+    const body = response.json()
+    // "First Name" and "first_name" have to reach the importer as one column.
+    expect(body.columns).toContain('employee_number')
+    expect(body.columns).toContain('first_name')
+    expect(body.rows).toHaveLength(1)
+    expect(body.rows[0].first_name).toBe('Ada')
+    expect(body.rows[0].start_date).toBe('2026-01-15')
+  })
+
+  it('skips blank rows rather than importing empty people', async () => {
+    const contentBase64 = await workbook([
+      ['employee_number', 'first_name', 'last_name', 'email', 'start_date'],
+      ['QH-503', 'Musa', 'Bello', 'musa2@acme.test', '2026-03-01'],
+      ['', '', '', '', ''],
+    ])
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/employees/import/parse',
+      headers: bearer(hrToken),
+      payload: { filename: 'staff.xlsx', contentBase64 },
+    })
+
+    expect(response.json().rows).toHaveLength(1)
+  })
+
+  it('refuses something that is not a spreadsheet', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/employees/import/parse',
+      headers: bearer(hrToken),
+      payload: {
+        filename: 'notes.xlsx',
+        contentBase64: Buffer.from('this is just text').toString('base64'),
+      },
+    })
+
+    expect(response.statusCode).toBe(422)
+    expect(response.json().message).toContain('.xlsx')
   })
 })

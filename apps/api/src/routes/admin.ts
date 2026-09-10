@@ -6,6 +6,7 @@
  * applies it. A 300-row spreadsheet gets inspected before it lands.
  */
 
+import ExcelJS from 'exceljs'
 import type { FastifyInstance } from 'fastify'
 import { and, desc, eq, gte, sql } from 'drizzle-orm'
 import { z } from 'zod'
@@ -367,6 +368,104 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database): void {
    * Rows are validated independently so one bad date does not hide the other
    * 40 problems in the file — HR should fix a spreadsheet once, not forty times.
    */
+  /**
+   * Turns an uploaded spreadsheet into the same row shape the paste box
+   * produces, so `/import` stays the single validator.
+   *
+   * Parsing happens here rather than in the browser because the console is
+   * deliberately dependency-free — pulling a spreadsheet library off a CDN into
+   * a page that holds an HR session is a worse trade than one server dependency.
+   *
+   * This only reads. Nothing is written, and the caller still has to run the
+   * result through validate and commit like any pasted CSV.
+   */
+  app.post('/v1/admin/employees/import/parse', async (request, reply) => {
+    requireRole(request, 'hr_admin', 'owner')
+    const body = z
+      .object({
+        filename: z.string().max(255),
+        contentBase64: z.string().min(1),
+      })
+      .parse(request.body)
+
+    const buffer = Buffer.from(body.contentBase64, 'base64')
+
+    // A staff list is a few hundred rows. Anything much larger is a mistake or
+    // an attempt to exhaust memory, and refusing early is cheaper than parsing.
+    if (buffer.byteLength > 5 * 1024 * 1024) {
+      throw new ApiError(
+        ERROR_CODES.VALIDATION_FAILED,
+        'That file is larger than 5MB. Export just the staff list and try again.',
+        413,
+      )
+    }
+
+    const workbook = new ExcelJS.Workbook()
+    try {
+      // Node 22 types Buffer as Buffer<ArrayBuffer>; exceljs ships older types
+      // that expect the ungenericised Buffer. Cast to exactly that parameter
+      // rather than to `any`, so a real signature change still breaks the build.
+      await workbook.xlsx.load(buffer as unknown as Parameters<typeof workbook.xlsx.load>[0])
+    } catch {
+      throw new ApiError(
+        ERROR_CODES.VALIDATION_FAILED,
+        'That file could not be read as a spreadsheet. Save it as .xlsx and try again.',
+        422,
+      )
+    }
+
+    const sheet = workbook.worksheets[0]
+    if (!sheet) {
+      throw new ApiError(ERROR_CODES.VALIDATION_FAILED, 'That workbook has no sheets', 422)
+    }
+
+    const cell = (v: unknown): string => {
+      if (v === null || v === undefined) return ''
+      // Dates come back as Date objects; the importer wants YYYY-MM-DD, and
+      // toISOString is the only rendering that does not depend on locale.
+      if (v instanceof Date) return v.toISOString().slice(0, 10)
+      if (typeof v === 'object') {
+        const rich = v as { text?: string; result?: unknown; hyperlink?: string }
+        if (typeof rich.text === 'string') return rich.text.trim()
+        if (rich.result !== undefined) return String(rich.result).trim()
+      }
+      return String(v).trim()
+    }
+
+    const headerRow = sheet.getRow(1)
+    const columns: string[] = []
+    headerRow.eachCell({ includeEmpty: true }, (c, i) => {
+      // Accept the human spellings people actually save: "First Name" and
+      // "first_name" are the same column.
+      columns[i - 1] = cell(c.value).toLowerCase().replace(/\s+/g, '_')
+    })
+
+    if (columns.filter(Boolean).length === 0) {
+      throw new ApiError(
+        ERROR_CODES.VALIDATION_FAILED,
+        'The first row of the sheet must be the column headings',
+        422,
+      )
+    }
+
+    const rows: Record<string, string>[] = []
+    sheet.eachRow({ includeEmpty: false }, (row, index) => {
+      if (index === 1) return
+      const record: Record<string, string> = {}
+      let empty = true
+      for (let i = 0; i < columns.length; i += 1) {
+        const key = columns[i]
+        if (!key) continue
+        const value = cell(row.getCell(i + 1).value)
+        record[key] = value
+        if (value) empty = false
+      }
+      if (!empty) rows.push(record)
+    })
+
+    return reply.send({ rows, columns: columns.filter(Boolean), sheetName: sheet.name })
+  })
+
   app.post('/v1/admin/employees/import', async (request, reply) => {
     const auth = requireRole(request, 'hr_admin', 'owner')
     const body = schemas.admin.bulkImportRequest.parse(request.body)
