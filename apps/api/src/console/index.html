@@ -574,14 +574,12 @@ $('#sign-out').addEventListener('click', () => {
 const TABS = [
   { id: 'overview',   label: 'Overview',      group: null,        accent: '#5B4BE8' },
   { id: 'reports',    label: 'Reports',       group: null,        accent: '#B14BE8' },
+  { id: 'coverage',   label: 'Coverage',      group: null,        accent: '#0B7A5C' },
+  { id: 'payroll',    label: 'Payroll',       group: null,        accent: '#0B7A5C' },
 
   { id: 'employees',  label: 'Employees',     group: 'People',    accent: '#2C8FD6' },
   { id: 'import',     label: 'Bulk import',   group: 'People',    accent: '#2C8FD6' },
   { id: 'documents',  label: 'Documents',     group: 'People',    accent: '#2C8FD6' },
-
-  { id: 'leave',      label: 'Leave types',   group: 'Policy',    accent: '#0B7A5C' },
-  { id: 'coverage',   label: 'Coverage',      group: 'Policy',    accent: '#0B7A5C' },
-  { id: 'payroll',    label: 'Payroll',       group: 'Policy',    accent: '#0B7A5C' },
 
   { id: 'locations',  label: 'Locations',     group: 'Workplace', accent: '#E8A33D' },
   { id: 'code',       label: 'Check-in codes', group: 'Workplace', accent: '#E8A33D' },
@@ -1169,84 +1167,6 @@ QH-102,Grace,Hopper,grace@kanjufoods.test,2026-02-01,Engineer</textarea>
 
   return section
 }
-
-VIEWS.leave = async () => {
-  await refreshReference()
-  const section = el(`<section>
-    <h2>Leave types</h2>
-    <p class="lede">Accrual method and carryover rules. Changes apply from the next nightly accrual run.</p>
-
-    <div class="card">
-      <h3>Add a leave type</h3>
-      <div class="grid">
-        <div><label>Name</label><input id="lt-name" placeholder="Annual Leave" /></div>
-        <div><label>Accrual method</label><select id="lt-method">
-          <option value="annual_fixed">Annual grant, fixed date</option>
-          <option value="annual_anniversary">Annual grant, employment anniversary</option>
-          <option value="monthly">Monthly accrual</option>
-        </select></div>
-        <div><label>Rate <span class="muted" id="lt-rate-hint">(days per year)</span></label><input id="lt-rate" type="number" step="0.5" value="20" /></div>
-        <div><label>Max balance</label><input id="lt-max" type="number" step="0.5" placeholder="blank = none" /></div>
-        <div><label>Carryover cap</label><input id="lt-cap" type="number" step="0.5" placeholder="blank = unlimited" /></div>
-        <div><label>Carryover expires after (months)</label><input id="lt-exp" type="number" placeholder="blank = never" /></div>
-        <div><label>Minimum notice (days)</label><input id="lt-notice" type="number" placeholder="blank = none" /></div>
-        <div><label>Colour</label><input id="lt-colour" type="color" value="#2563eb" /></div>
-        <div><label><input type="checkbox" id="lt-doc" style="width:auto" /> Requires a document</label></div>
-        <div><label><input type="checkbox" id="lt-paid" style="width:auto" checked /> Paid</label></div>
-      </div>
-      <div class="actions"><button class="btn" id="save-lt">Save leave type</button></div>
-      <div id="lt-msg"></div>
-    </div>
-
-    <div class="card">
-      <h3>Configured</h3>
-      <div class="table-wrap"><table>
-        <thead><tr><th>Name</th><th>Method</th><th>Rate</th><th>Carryover</th><th>Notice</th><th>Document</th></tr></thead>
-        <tbody>${state.leaveTypes.map((t) => `<tr>
-          <td><span class="pill neutral" style="background:${esc(t.colour)}22;color:${esc(t.colour)}">${esc(t.name)}</span></td>
-          <td>${esc(t.accrualMethod.replace(/_/g, ' '))}</td>
-          <td>${t.accrualRate} ${t.accrualMethod === 'monthly' ? '/mo' : '/yr'}</td>
-          <td>${t.carryoverCap === null ? 'unlimited' : t.carryoverCap}${t.carryoverExpiryMonths ? `, expires in ${t.carryoverExpiryMonths}mo` : ''}</td>
-          <td>${t.minNoticeDays ?? '—'}</td>
-          <td>${t.requiresDocument ? 'yes' : 'no'}</td>
-        </tr>`).join('')}</tbody>
-      </table></div>
-    </div>
-  </section>`)
-
-  const methodEl = $('#lt-method', section)
-  methodEl.addEventListener('change', () => {
-    $('#lt-rate-hint', section).textContent =
-      methodEl.value === 'monthly' ? '(days per month)' : '(days per year)'
-  })
-
-  $('#save-lt', section).addEventListener('click', async () => {
-    const numOrNull = (sel) => { const v = $(sel, section).value.trim(); return v === '' ? null : Number(v) }
-    const body = {
-      name: $('#lt-name', section).value.trim(),
-      accrualMethod: methodEl.value,
-      accrualRate: Number($('#lt-rate', section).value),
-      maxBalance: numOrNull('#lt-max'),
-      carryoverCap: numOrNull('#lt-cap'),
-      carryoverExpiryMonths: numOrNull('#lt-exp'),
-      minNoticeDays: numOrNull('#lt-notice'),
-      requiresDocument: $('#lt-doc', section).checked,
-      isPaid: $('#lt-paid', section).checked,
-      colour: $('#lt-colour', section).value,
-    }
-    try { await req('/v1/admin/leave-types', { method: 'POST', body }); await show('leave') }
-    catch (e) { $('#lt-msg', section).innerHTML = notice('bad', formatError(e)) }
-  })
-
-  return section
-}
-
-const kobo = (naira) => Math.round(Number(naira || 0) * 100)
-// Returns markup, not a bare string: every figure in this product is set in
-// mono so amounts align down a column and read as recorded data rather than
-// prose. Safe because all 22 call sites interpolate into element content —
-// none into an attribute or a confirm().
-const money = (k) => '<span class="num">₦' + (Number(k || 0) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</span>'
 
 VIEWS.payroll = async () => {
   await refreshReference()
