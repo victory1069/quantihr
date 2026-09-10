@@ -5,20 +5,38 @@
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>Quanti HR — Console</title>
 <style>
+  /*
+   * Quanti "Soft" — the same palette the mobile app uses.
+   *
+   * The console was never dark, but it was a cool slate-and-blue scheme while
+   * the app is warm off-white and indigo, so HR and their staff were looking at
+   * two products. These values are the app's `light` palette.
+   *
+   * One deliberate divergence: success, warning and danger are darker here than
+   * in the app. The app uses those hues on large mono figures where #12B886
+   * reads fine; the console uses them for small table text, where the same
+   * green is about 2.3:1 against white and fails. Darkened until they pass.
+   */
   :root {
-    --bg: #f8fafc; --surface: #fff; --surface-alt: #f1f5f9;
-    --border: #e2e8f0; --border-strong: #cbd5e1;
-    --text: #0f172a; --muted: #64748b; --faint: #94a3b8;
-    --primary: #1d4ed8; --primary-soft: #eff6ff;
-    --success: #047857; --success-soft: #ecfdf5;
-    --warning: #b45309; --warning-soft: #fffbeb;
-    --danger: #b91c1c; --danger-soft: #fef2f2;
-    --radius: 12px;
+    --bg: #FDFCFA; --surface: #FFFFFF; --surface-alt: #F5F2EE;
+    --border: #EAE5DF; --border-strong: #D9D2CA;
+    --text: #1C1B1A; --muted: #6E6A66; --faint: #9A948E;
+    --primary: #5B4BE8; --primary-soft: #F0EEFD;
+    --accent: #FF6B4A;
+    --success: #0B7A5C; --success-soft: #E8F8F2;
+    --warning: #9A6400; --warning-soft: #FDF4E3;
+    --danger: #C42B2B; --danger-soft: #FBEBEB;
+    --radius: 14px;
+    --radius-lg: 20px;
+
+    /* Matches the app: Space Grotesk for prose, Space Mono for every figure. */
+    --sans: 'Space Grotesk', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--text);
-    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font: 15px/1.5 var(--sans);
   }
   a { color: var(--primary); }
   .hidden { display: none !important; }
@@ -28,10 +46,18 @@
     padding: 0 24px; display: flex; align-items: center; gap: 24px;
     position: sticky; top: 0; z-index: 10;
   }
-  header h1 { font-size: 17px; margin: 16px 0; font-weight: 700; }
-  header .org { color: var(--muted); font-size: 13px; }
+  /*
+   * Everything but the nav refuses to shrink. Flex items shrink by default, so
+   * with a wider face than the old system stack the brand, the org name and the
+   * sign-out button were all wrapping onto two lines to make room for a nav
+   * that then clipped anyway. The nav is the only thing here that can scroll,
+   * so it is the only thing allowed to give.
+   */
+  header h1 { font-size: 17px; margin: 16px 0; font-weight: 700; white-space: nowrap; flex-shrink: 0; }
+  header .org { color: var(--muted); font-size: 13px; white-space: nowrap; flex-shrink: 0; }
   header .spacer { flex: 1; }
-  nav { display: flex; gap: 4px; overflow-x: auto; }
+  header #sign-out { flex-shrink: 0; white-space: nowrap; }
+  nav { display: flex; gap: 4px; overflow-x: auto; min-width: 0; }
   nav button {
     background: none; border: 0; padding: 16px 12px; cursor: pointer;
     font: inherit; font-size: 14px; color: var(--muted);
@@ -45,7 +71,7 @@
 
   .card {
     background: var(--surface); border: 1px solid var(--border);
-    border-radius: var(--radius); padding: 20px; margin-bottom: 16px;
+    border-radius: var(--radius-lg); padding: 20px; margin-bottom: 16px;
   }
   .card h3 { margin: 0 0 12px; font-size: 16px; }
   .card p.hint { color: var(--muted); font-size: 13px; margin: 4px 0 12px; }
@@ -57,7 +83,7 @@
     border-radius: 8px; font: inherit; background: var(--surface); color: var(--text);
   }
   input:focus, select:focus, textarea:focus { outline: 2px solid var(--primary); outline-offset: -1px; }
-  textarea { min-height: 90px; resize: vertical; font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 13px; }
+  textarea { min-height: 90px; resize: vertical; font-family: var(--mono); font-size: 13px; }
 
   button.btn {
     padding: 10px 16px; border-radius: 8px; border: 1px solid transparent;
@@ -70,7 +96,8 @@
   .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
 
   table { width: 100%; border-collapse: collapse; font-size: 14px; }
-  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--border); font-variant-numeric: tabular-nums; }
+  .num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
   th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
   tbody tr:hover { background: var(--surface-alt); }
   .table-wrap { overflow-x: auto; }
@@ -88,7 +115,7 @@
   .notice.bad { background: var(--danger-soft); border-color: #fecaca; color: var(--danger); }
 
   .code-display {
-    font: 700 56px/1 ui-monospace, Menlo, Consolas, monospace;
+    font: 700 56px/1 var(--mono);
     letter-spacing: 12px; text-align: center; padding: 28px 0 20px;
     color: var(--text);
   }
@@ -97,7 +124,7 @@
   .signin { max-width: 420px; margin: 80px auto; }
   .muted { color: var(--muted); }
   .row-between { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
-  .stat { font-size: 26px; font-weight: 700; }
+  .stat { font-size: 26px; font-weight: 700; font-family: var(--mono); font-variant-numeric: tabular-nums; }
   .stat-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
 </style>
 </head>
@@ -530,7 +557,11 @@ VIEWS.leave = async () => {
 }
 
 const kobo = (naira) => Math.round(Number(naira || 0) * 100)
-const money = (k) => '₦' + (Number(k || 0) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+// Returns markup, not a bare string: every figure in this product is set in
+// mono so amounts align down a column and read as recorded data rather than
+// prose. Safe because all 22 call sites interpolate into element content —
+// none into an attribute or a confirm().
+const money = (k) => '<span class="num">₦' + (Number(k || 0) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '</span>'
 
 VIEWS.payroll = async () => {
   await refreshReference()
