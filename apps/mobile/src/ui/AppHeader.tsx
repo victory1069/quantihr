@@ -31,7 +31,16 @@ export function AppHeader() {
     : '··'
 
   return (
-    <View style={[styles.wrap, { paddingTop: insets.top + space.sm }]}>
+    // The inset alone is not enough breathing room. On a notched phone it is
+    // ~47pt and the bar reads fine, but on web and on older flat-top devices it
+    // is 0 and the mark ends up jammed against the edge. Flooring the inset
+    // before adding the gap gives one rule that holds on both.
+    <View
+      style={[
+        styles.wrap,
+        { paddingTop: Math.max(insets.top, space.md) + space.md },
+      ]}
+    >
       <View style={styles.inner}>
         <Pressable
           onPress={() => router.push('/')}
@@ -104,7 +113,7 @@ function ModeSwitch({ on, onChange }: { on: boolean; onChange: (next: boolean) =
 const styles = StyleSheet.create({
   wrap: {
     backgroundColor: colour.bg,
-    paddingBottom: space.sm,
+    paddingBottom: space.md,
   },
   inner: {
     width: '100%',
