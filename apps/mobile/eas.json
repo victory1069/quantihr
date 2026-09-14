@@ -1,0 +1,37 @@
+{
+  "$schema": "https://raw.githubusercontent.com/expo/eas-cli/main/schema/eas.json",
+  "cli": {
+    "version": ">= 5.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "base": {
+      "node": "22.11.0",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://REPLACE-ME.onrender.com"
+      }
+    },
+
+    "development": {
+      "extends": "base",
+      "developmentClient": true,
+      "distribution": "internal",
+      "android": { "buildType": "apk" }
+    },
+
+    "preview": {
+      "extends": "base",
+      "distribution": "internal",
+      "android": { "buildType": "apk" }
+    },
+
+    "production": {
+      "extends": "base",
+      "distribution": "store",
+      "android": { "buildType": "app-bundle" }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

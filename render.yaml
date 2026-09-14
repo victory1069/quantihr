@@ -1,0 +1,89 @@
+# Render blueprint — Quanti HR API + Postgres.
+#
+# Deploy: push this file, then New → Blueprint on render.com and point it at
+# the repo. Render reads this, creates both services and links them.
+#
+# NODE_ENV is deliberately `development` here. This is a TEST deployment, and
+# production mode would make it untestable:
+#
+#   - src/index.ts only seeds when NODE_ENV !== 'production', so production
+#     boots an empty database with no org, no employees, nothing to look at.
+#   - env.ts refuses to start in production unless EMAIL_DRIVER is ses|smtp,
+#     which means standing up a mail provider first.
+#   - The seeded accounts use @kanjufoods.test addresses. `.test` is reserved
+#     by RFC 2606 and is unroutable, so no real mail provider could ever
+#     deliver a magic link to them anyway.
+#
+# What `development` does NOT downgrade: DATABASE_URL below is a real managed
+# Postgres, so RLS — the tenant isolation mechanism — is exercised exactly as
+# it would be in production. Only seeding and mail delivery differ.
+#
+# Sign-in works with no mail provider because routes/auth.ts returns the magic
+# link in the response body outside production, and the app follows it. The
+# link is also in the Render logs, prefixed `[email] →`.
+
+databases:
+  - name: quanti-db
+    databaseName: quanti
+    user: quanti
+    plan: free       # NOTE: Render expires free Postgres 30 days after creation.
+
+services:
+  - type: web
+    name: quanti-api
+    runtime: node
+    plan: free       # Sleeps after 15 min idle; the next request takes ~50s.
+    healthCheckPath: /health
+
+    # --include=dev is load-bearing: the API starts via `tsx src/index.ts` and
+    # tsx is a devDependency, so a production-mode install omits it and the
+    # service crashes on boot with "tsx: not found".
+    #
+    # The workspace flags keep react-native and the Expo SDK out of this
+    # install. Without them npm builds the mobile app's tree too — several
+    # hundred MB the API has no use for.
+    buildCommand: npm ci --include=dev --include-workspace-root --workspace @quanti/shared --workspace @quanti/api
+    startCommand: npm run start --workspace @quanti/api
+
+    envVars:
+      - key: NODE_VERSION
+        value: "22.11.0"
+
+      - key: NODE_ENV
+        value: development
+
+      # Real managed Postgres — wired by Render, never hand-edited.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: quanti-db
+          property: connectionString
+
+      # Generated once and stored by Render. Rotating it signs everyone out.
+      - key: JWT_SECRET
+        generateValue: true
+
+      # Magic links are logged rather than mailed. See the header note.
+      - key: EMAIL_DRIVER
+        value: console
+      - key: SMS_DRIVER
+        value: console
+      - key: PUSH_DRIVER
+        value: console
+
+      # Deep link back into the installed app. Must match `scheme` in app.json.
+      - key: APP_URL
+        value: quantihr://
+
+      - key: CORS_ORIGINS
+        value: "*"
+
+      - key: STORAGE_DRIVER
+        value: local
+
+      # Meeting summarisation stays off; the pipeline reports it as unavailable
+      # rather than inventing a summary. Add ANTHROPIC_API_KEY in the dashboard
+      # to switch it on — deliberately not in this file.
+      - key: GOOGLE_MEET_DRIVER
+        value: fake
+      - key: TRANSCRIPTION_DRIVER
+        value: none
