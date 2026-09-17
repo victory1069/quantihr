@@ -8,7 +8,7 @@
     "base": {
       "node": "22.11.0",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://REPLACE-ME.onrender.com"
+        "EXPO_PUBLIC_API_URL": "https://quanti-api.onrender.com"
       }
     },
 
