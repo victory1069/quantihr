@@ -37,6 +37,8 @@ export const organisations = pgTable('organisations', {
   country: text('country').notNull().default('NG'),
   timezone: text('timezone').notNull().default('Africa/Lagos'),
   settings: jsonb('settings').notNull().default({}),
+  onboardingSteps: jsonb('onboarding_steps').$type<string[]>().notNull().default([]),
+  onboardingCompletedAt: timestamp('onboarding_completed_at', { withTimezone: true }),
   createdAt: createdAt(),
 })
 
@@ -598,6 +600,25 @@ export const meetingDisputes = pgTable(
   }),
 )
 
+export const policyDocuments = pgTable(
+  'policy_documents',
+  {
+    id: id(),
+    orgId: orgId(),
+    title: text('title').notNull(),
+    filename: text('filename').notNull(),
+    mimeType: text('mime_type').notNull(),
+    storageKey: text('storage_key').notNull(),
+    bodyText: text('body_text').notNull().default(''),
+    charCount: integer('char_count').notNull().default(0),
+    status: text('status').notNull().default('ready'),
+    uploadedBy: uuid('uploaded_by').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({ orgIdx: index('policy_documents_org_idx').on(t.orgId, t.createdAt) }),
+)
+
 export const speakerMappings = pgTable(
   'speaker_mappings',
   {
@@ -653,4 +674,5 @@ export const schema = {
   meetingActions,
   meetingDisputes,
   speakerMappings,
+  policyDocuments,
 }

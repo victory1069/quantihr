@@ -65,6 +65,12 @@ const schema = z.object({
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_FROM: z.string().optional(),
 
+  /**
+   * Gates org provisioning. Absent → the endpoint refuses to run, so a
+   * deployment cannot expose open org creation by forgetting to set it.
+   */
+  PLATFORM_API_KEY: z.string().min(32).optional(),
+
   APP_URL: z.string().default('http://localhost:8081'),
   CORS_ORIGINS: z.string().default('*'),
 

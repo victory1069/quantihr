@@ -59,6 +59,9 @@ const PUBLIC_ROUTES = new Set([
   'POST:/v1/auth/otp/request',
   'POST:/v1/auth/otp/verify',
   'GET:/health',
+  // Authenticated by the platform key in the route, not by a tenant JWT —
+  // provisioning happens before an org exists to scope a token to.
+  'POST:/v1/platform/organisations',
   // Static console shell. It holds no data — everything it shows is fetched
   // over the same authenticated /v1 endpoints the mobile client uses.
   'GET:/console',

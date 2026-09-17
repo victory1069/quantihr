@@ -37,6 +37,11 @@ create table if not exists organisations (
   country      text not null default 'NG',
   timezone     text not null default 'Africa/Lagos',
   settings     jsonb not null default '{}'::jsonb,
+  -- Setup progress. Steps completed are recorded as they happen so the wizard
+  -- can resume where the HR lead left off; completed_at is what gates the
+  -- console out of the wizard and into the product.
+  onboarding_steps         jsonb not null default '[]'::jsonb,
+  onboarding_completed_at  timestamptz,
   created_at   timestamptz not null default now()
 );
 
@@ -696,6 +701,37 @@ create table if not exists speaker_mappings (
 );
 
 -- ---------------------------------------------------------------------------
+-- Policy corpus — what the self-service assistant answers from
+-- ---------------------------------------------------------------------------
+
+-- The handbook and every policy an org uploads, with the text extracted at
+-- upload time. The assistant is given an org's corpus whole, in a cached
+-- prompt, rather than chunks from a shared index: a handbook is tens of
+-- thousands of tokens, which fits, and it makes per-tenant isolation a matter
+-- of which rows are loaded rather than which vectors are filtered. One
+-- organisation's handbook surfacing in another's assistant is the
+-- highest-severity failure this product can have, and a per-row org_id under
+-- RLS is a far stronger guarantee than a metadata filter on an index.
+create table if not exists policy_documents (
+  id             uuid primary key default gen_random_uuid(),
+  org_id         uuid not null references organisations(id) on delete cascade,
+  title          text not null,
+  filename       text not null,
+  mime_type      text not null,
+  storage_key    text not null,
+  -- Extracted at upload. Empty when extraction failed, which the assistant
+  -- treats as "this document says nothing" rather than guessing.
+  body_text      text not null default '',
+  char_count     integer not null default 0,
+  status         text not null default 'ready',
+  uploaded_by    uuid references users(id) on delete set null,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now()
+);
+
+create index if not exists policy_documents_org_idx on policy_documents(org_id, created_at desc);
+
+-- ---------------------------------------------------------------------------
 -- Row-level security
 -- ---------------------------------------------------------------------------
 --
@@ -715,7 +751,8 @@ declare
     'documents', 'idempotency_keys', 'notifications', 'audit_log',
     'meeting_types', 'meetings', 'meeting_participants',
     'meeting_transcripts', 'meeting_summaries', 'meeting_actions',
-    'meeting_disputes', 'speaker_mappings'
+    'meeting_disputes', 'speaker_mappings',
+    'policy_documents'
   ];
 begin
   foreach t in array tenant_tables loop

@@ -39,6 +39,8 @@ export type AuditAction =
   | 'meeting.reviewed'
   | 'meeting.dispute_resolved'
   | 'meeting.checkin_code_issued'
+  | 'org.onboarding_completed'
+  | 'org.provisioned'
 
 export interface AuditEntry {
   orgId: string
