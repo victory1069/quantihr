@@ -56,3 +56,5 @@ export type {
   ReportKind,
 } from './reports.js'
 export { REPORT_KINDS } from './reports.js'
+export * as policy from './policy.js'
+export type { PolicyAnswer, AskResponse, PolicyDocumentView } from './policy.js'

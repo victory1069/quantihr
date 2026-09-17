@@ -32,7 +32,20 @@ let app: FastifyInstance
 let org: TestOrg
 let other: TestOrg
 
-const at = (hhmm: string): Date => new Date(`2026-09-07T${hhmm}:00.000Z`)
+/**
+ * The fixture meeting happened yesterday, relative to whenever the suite runs.
+ *
+ * It used to be a fixed date, which passed for exactly one week: the dispute
+ * window is seven days, so the day the fixture aged past it every dispute test
+ * started returning 422 with nothing in the code having changed. Anchoring to
+ * "yesterday" keeps it inside every window the product has, permanently.
+ */
+const FIXTURE_DAY = (() => {
+  const d = new Date()
+  d.setUTCDate(d.getUTCDate() - 1)
+  return d.toISOString().slice(0, 10)
+})()
+const at = (hhmm: string): Date => new Date(`${FIXTURE_DAY}T${hhmm}:00.000Z`)
 
 /**
  * A stub that answers `messages.parse` with a fixed extraction.
@@ -270,8 +283,8 @@ describe('conference ingestion', () => {
         orgId: org.orgId,
         employeeId: org.employeeId,
         leaveTypeId: org.leaveTypeId,
-        startDate: '2026-09-07',
-        endDate: '2026-09-07',
+        startDate: FIXTURE_DAY,
+        endDate: FIXTURE_DAY,
         daysCount: '1',
         status: 'approved',
       })

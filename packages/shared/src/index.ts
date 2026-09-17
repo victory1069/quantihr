@@ -30,3 +30,4 @@ export type {
   ReportKind,
 } from './schemas/reports.js'
 export { REPORT_KINDS } from './schemas/reports.js'
+export type { PolicyAnswer, AskResponse, PolicyDocumentView } from './schemas/policy.js'

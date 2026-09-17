@@ -40,6 +40,8 @@ export type AuditAction =
   | 'meeting.dispute_resolved'
   | 'meeting.checkin_code_issued'
   | 'org.onboarding_completed'
+  | 'policy.removed'
+  | 'policy.uploaded'
   | 'org.provisioned'
 
 export interface AuditEntry {
