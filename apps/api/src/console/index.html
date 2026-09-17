@@ -371,6 +371,32 @@
   .kind:hover { border-color: var(--border-strong); }
   .kind[aria-pressed="true"] { border-color: var(--tint, var(--primary)); background: var(--surface); }
   .kind[aria-pressed="true"]::before { opacity: 1; }
+  /* Setup wizard */
+  .wizard-rail {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0 0 22px;
+  }
+  .wstep {
+    padding: 12px 14px; border-radius: var(--radius); border: 1px solid var(--border);
+    background: var(--surface); position: relative; overflow: hidden;
+  }
+  .wstep::before {
+    content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px;
+    background: var(--border);
+  }
+  .wstep.done::before { background: var(--success); }
+  .wstep.current::before { background: var(--primary); }
+  .wstep .n { font-family: var(--mono); font-size: 11px; color: var(--faint); letter-spacing: .12em; }
+  .wstep strong { display: block; margin-top: 4px; font-size: 14px; }
+  .wstep.done strong::after { content: ' ✓'; color: var(--success); }
+  .wizard-foot {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    margin-top: 8px; flex-wrap: wrap;
+  }
+  .setup-banner {
+    background: var(--primary-soft); border: 1px solid var(--primary);
+    border-radius: var(--radius); padding: 12px 16px; margin-bottom: 18px;
+    display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
   .modal-scrim {
     position: fixed; inset: 0; background: var(--scrim, rgba(28,27,26,.45));
     display: flex; align-items: flex-start; justify-content: center;
@@ -628,9 +654,18 @@ async function boot() {
     b.addEventListener('click', () => show(tab.id))
     nav.appendChild(b)
   }
-  await show('overview')
+  // A fresh org lands in setup. Anyone else lands where they always did; the
+  // wizard is reachable again from Settings if they want it.
+  try {
+    const ob = await req('/v1/admin/onboarding')
+    state.onboarding = ob
+    await show(ob.completedAt ? 'overview' : 'setup')
+  } catch {
+    await show('overview')
+  }
 }
 
+window.__show = (id) => show(id)
 async function show(tabId) {
   for (const b of $('#nav').querySelectorAll('button.nav-item')) {
     b.setAttribute('aria-current', String(b.dataset.tab === tabId))
@@ -705,12 +740,275 @@ function openModal({ title, body, confirmLabel, onConfirm }) {
 
 const VIEWS = {}
 
+const WIZARD = [
+  { id: 'basics',   label: 'Company',  blurb: 'Where and when people work.' },
+  { id: 'leave',    label: 'Leave',    blurb: 'The types of leave you offer.' },
+  { id: 'handbook', label: 'Policies', blurb: 'What the assistant answers from.' },
+  { id: 'staff',    label: 'Staff',    blurb: 'Bring the roster in.' },
+]
+
+VIEWS.setup = async () => {
+  await refreshReference()
+  const ob = state.onboarding ?? (state.onboarding = await req('/v1/admin/onboarding'))
+  const doneSet = new Set(ob.steps.filter((x) => x.done).map((x) => x.step))
+  let current = WIZARD.find((w) => !doneSet.has(w.id))?.id ?? 'staff'
+
+  const section = el(`<section>
+    <div class="page-head">
+      <div>
+        <h2>Set up ${esc(ob.organisation.name)}</h2>
+        <p class="lede">Four steps. Each one can be changed later from the sidebar — this just gets you to a working org.</p>
+      </div>
+      ${ob.completedAt ? '' : `<button class="btn ghost" id="wiz-skip">Skip setup for now</button>`}
+    </div>
+    <div class="wizard-rail" id="wiz-rail"></div>
+    <div id="wiz-body"></div>
+  </section>`)
+
+  const rail = $('#wiz-rail', section)
+  const body = $('#wiz-body', section)
+
+  const paintRail = () => {
+    rail.innerHTML = WIZARD.map((w, i) => `
+      <button class="wstep ${doneSet.has(w.id) ? 'done' : ''} ${current === w.id ? 'current' : ''}"
+              data-step="${w.id}" style="text-align:left;cursor:pointer;font:inherit">
+        <div class="n">STEP ${i + 1}</div>
+        <strong>${esc(w.label)}</strong>
+        <div class="hint" style="margin:2px 0 0">${esc(w.blurb)}</div>
+      </button>`).join('')
+    for (const b of rail.querySelectorAll('.wstep')) {
+      b.addEventListener('click', () => { current = b.dataset.step; paint() })
+    }
+  }
+
+  const markDone = async (step) => {
+    await req(`/v1/admin/onboarding/steps/${step}`, { method: 'POST' })
+    doneSet.add(step)
+    const next = WIZARD[WIZARD.findIndex((w) => w.id === step) + 1]
+    current = next ? next.id : step
+    state.onboarding = await req('/v1/admin/onboarding')
+    paint()
+  }
+
+  const foot = (step, { canContinue = true, label = 'Continue' } = {}) => `
+    <div class="wizard-foot">
+      <span class="muted" style="font-size:13px">${doneSet.has(step) ? 'Done — you can still change this.' : ''}</span>
+      <button class="btn" data-done="${step}" ${canContinue ? '' : 'disabled'}>${esc(label)}</button>
+    </div>`
+
+  // ---- Step 1: company basics --------------------------------------------
+  const basics = async () => {
+    const org = await req('/v1/admin/org')
+    const locs = state.locations
+    body.innerHTML = `
+      <div class="card">
+        <h3>Company</h3>
+        <div class="grid">
+          <div><label>Company name</label><input id="b-name" value="${esc(org.name)}" /></div>
+          <div><label>Timezone</label><input id="b-tz" value="${esc(org.timezone)}" placeholder="Africa/Lagos" /></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Where people check in</h3>
+        <p class="hint">At least one location with a geofence. Employees check in from inside the radius, so set it to the building, not the city.</p>
+        ${locs.length ? `<table><thead><tr><th>Name</th><th>Address</th><th>Radius</th></tr></thead><tbody>${
+          locs.map((l) => `<tr><td>${esc(l.name)}</td><td>${esc(l.address ?? '—')}</td><td>${l.geofenceRadiusM} m</td></tr>`).join('')
+        }</tbody></table>` : ''}
+        <div class="grid" style="margin-top:12px">
+          <div><label>Location name</label><input id="b-lname" placeholder="Head office" /></div>
+          <div><label>Address</label><input id="b-laddr" /></div>
+          <div><label>Latitude</label><input id="b-lat" type="number" step="0.000001" placeholder="6.4281" /></div>
+          <div><label>Longitude</label><input id="b-lng" type="number" step="0.000001" placeholder="3.4219" /></div>
+          <div><label>Geofence radius (m)</label><input id="b-rad" type="number" value="150" /></div>
+        </div>
+        <div class="actions"><button class="btn secondary" id="b-addloc">Add location</button></div>
+        <div id="b-msg"></div>
+      </div>
+      ${foot('basics', { canContinue: locs.length > 0, label: locs.length > 0 ? 'Save and continue' : 'Add a location to continue' })}`
+
+    $('#b-addloc', body).addEventListener('click', async () => {
+      try {
+        await req('/v1/admin/locations', { method: 'POST', body: {
+          name: $('#b-lname', body).value.trim(),
+          address: $('#b-laddr', body).value.trim() || undefined,
+          latitude: Number($('#b-lat', body).value),
+          longitude: Number($('#b-lng', body).value),
+          geofenceRadiusM: Number($('#b-rad', body).value || 150),
+        }})
+        await refreshReference(); await basics()
+      } catch (e) { $('#b-msg', body).innerHTML = notice('bad', formatError(e)) }
+    })
+    body.querySelector('[data-done="basics"]')?.addEventListener('click', async () => {
+      try {
+        await req('/v1/admin/org', { method: 'PATCH', body: {
+          name: $('#b-name', body).value.trim(), timezone: $('#b-tz', body).value.trim(),
+        }})
+        await markDone('basics')
+      } catch (e) { $('#b-msg', body).innerHTML = notice('bad', formatError(e)) }
+    })
+  }
+
+  // ---- Step 2: leave types -------------------------------------------------
+  const leave = async () => {
+    const types = state.leaveTypes
+    body.innerHTML = `
+      <div class="card">
+        <h3>Leave types</h3>
+        <p class="hint">Annual leave is the one everyone needs. Add the rest as you go — each one accrues on its own rule.</p>
+        ${types.length ? `<table><thead><tr><th>Type</th><th>Accrues</th><th>Days / year</th><th>Paid</th></tr></thead><tbody>${
+          types.map((t) => `<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:5px;background:${esc(t.colour)};margin-right:8px"></span>${esc(t.name)}</td><td>${esc(t.accrualMethod.replace(/_/g,' '))}</td><td>${t.accrualRate}</td><td>${t.isPaid ? 'Yes' : 'No'}</td></tr>`).join('')
+        }</tbody></table>` : ''}
+        <div class="grid" style="margin-top:12px">
+          <div><label>Name</label><input id="l-name" placeholder="Annual Leave" /></div>
+          <div><label>Accrual</label><select id="l-method">
+            <option value="annual_fixed">Fixed at year start</option>
+            <option value="monthly">Monthly</option>
+            <option value="annual_anniversary">On work anniversary</option>
+          </select></div>
+          <div><label>Days per year</label><input id="l-rate" type="number" step="0.5" value="20" /></div>
+          <div><label>Max balance</label><input id="l-max" type="number" step="0.5" placeholder="optional" /></div>
+          <div><label>Carry over up to</label><input id="l-carry" type="number" step="0.5" placeholder="optional" /></div>
+          <div><label>Min notice (days)</label><input id="l-notice" type="number" placeholder="optional" /></div>
+          <div><label>Colour</label><input id="l-colour" type="color" value="#5B4BE8" /></div>
+          <div><label>&nbsp;</label><label style="font-weight:400"><input type="checkbox" id="l-paid" checked /> Paid</label>
+            <label style="font-weight:400"><input type="checkbox" id="l-doc" /> Needs a document</label></div>
+        </div>
+        <div class="actions"><button class="btn secondary" id="l-add">Add leave type</button></div>
+        <div id="l-msg"></div>
+      </div>
+      ${foot('leave', { canContinue: types.length > 0, label: types.length > 0 ? 'Continue' : 'Add a leave type to continue' })}`
+
+    $('#l-add', body).addEventListener('click', async () => {
+      const opt = (id) => { const v = $(id, body).value; return v === '' ? null : Number(v) }
+      try {
+        await req('/v1/admin/leave-types', { method: 'POST', body: {
+          name: $('#l-name', body).value.trim(),
+          accrualMethod: $('#l-method', body).value,
+          accrualRate: Number($('#l-rate', body).value),
+          maxBalance: opt('#l-max'),
+          carryoverCap: opt('#l-carry'),
+          carryoverExpiryMonths: opt('#l-carry') === null ? null : 3,
+          minNoticeDays: opt('#l-notice'),
+          requiresDocument: $('#l-doc', body).checked,
+          isPaid: $('#l-paid', body).checked,
+          colour: $('#l-colour', body).value,
+        }})
+        await refreshReference(); await leave()
+      } catch (e) { $('#l-msg', body).innerHTML = notice('bad', formatError(e)) }
+    })
+    body.querySelector('[data-done="leave"]')?.addEventListener('click', () => markDone('leave'))
+  }
+
+  // ---- Step 3: policy handbook --------------------------------------------
+  const handbook = async () => {
+    const lib = await req('/v1/admin/policies')
+    body.innerHTML = `
+      <div class="card">
+        <h3>Policies</h3>
+        <p class="hint">
+          Upload the handbook and every policy you want employees to be able to ask about.
+          The assistant answers only from these, and cites the document and the line it used.
+          PDF, Word or plain text.
+        </p>
+        ${lib.documents.length ? `<table><thead><tr><th>Document</th><th>File</th><th>Text</th><th></th></tr></thead><tbody>${
+          lib.documents.map((d) => `<tr>
+            <td>${esc(d.title)}</td><td class="muted">${esc(d.filename)}</td>
+            <td>${d.status === 'empty'
+              ? '<span class="pill warn">no text found</span>'
+              : `<span class="num">${(d.charCount / 1000).toFixed(1)}k chars</span>`}</td>
+            <td><button class="btn ghost h-del" data-id="${d.id}">Remove</button></td>
+          </tr>`).join('')
+        }</tbody></table>` : ''}
+        <div class="grid" style="margin-top:12px">
+          <div><label>Title</label><input id="h-title" placeholder="Employee Handbook 2026" /></div>
+          <div><label>File</label><input id="h-file" type="file" accept=".pdf,.docx,.txt,.md" /></div>
+        </div>
+        <div class="actions"><button class="btn secondary" id="h-up">Upload</button></div>
+        <div id="h-msg"></div>
+        ${lib.documents.some((d) => d.status === 'empty')
+          ? notice('warn', 'A document produced no text — usually a scanned PDF. Re-save it as a text PDF or a Word file and upload again; the assistant cannot read an image.')
+          : ''}
+      </div>
+      ${foot('handbook', { label: lib.documents.length ? 'Continue' : 'Skip for now' })}`
+
+    $('#h-up', body).addEventListener('click', async () => {
+      const file = $('#h-file', body).files?.[0]
+      const title = $('#h-title', body).value.trim() || file?.name?.replace(/\.[^.]+$/, '')
+      if (!file) { $('#h-msg', body).innerHTML = notice('warn', 'Choose a file first.'); return }
+      $('#h-msg', body).innerHTML = '<p class="muted">Reading the document…</p>'
+      try {
+        const buf = new Uint8Array(await file.arrayBuffer())
+        let bin = ''; for (let i = 0; i < buf.length; i += 1) bin += String.fromCharCode(buf[i])
+        await req('/v1/admin/policies', { method: 'POST', body: {
+          title, filename: file.name, mimeType: file.type || 'application/octet-stream', contentBase64: btoa(bin),
+        }})
+        await handbook()
+      } catch (e) { $('#h-msg', body).innerHTML = notice('bad', formatError(e)) }
+    })
+    for (const b of body.querySelectorAll('.h-del')) {
+      b.addEventListener('click', async () => {
+        await req(`/v1/admin/policies/${b.dataset.id}`, { method: 'DELETE' }); await handbook()
+      })
+    }
+    body.querySelector('[data-done="handbook"]')?.addEventListener('click', () => markDone('handbook'))
+  }
+
+  // ---- Step 4: staff -----------------------------------------------------------
+  const staff = async () => {
+    const n = state.employees.length - 1
+    body.innerHTML = `
+      <div class="card">
+        <h3>Staff</h3>
+        <p class="hint">
+          ${n > 0 ? `${n} employee(s) are in already.` : 'Nobody but you is in yet.'}
+          Bulk import takes a spreadsheet; the Employees page adds people one at a time.
+        </p>
+        <div class="actions">
+          <button class="btn secondary" id="s-import">Open bulk import</button>
+          <button class="btn ghost" id="s-one">Add one employee</button>
+        </div>
+      </div>
+      ${foot('staff', { label: n > 0 ? 'Finish setup' : 'Finish setup (add staff later)' })}`
+
+    $('#s-import', body).addEventListener('click', () => show('import'))
+    $('#s-one', body).addEventListener('click', () => show('employees'))
+    body.querySelector('[data-done="staff"]')?.addEventListener('click', async () => {
+      await req('/v1/admin/onboarding/steps/staff', { method: 'POST' })
+      await req('/v1/admin/onboarding/complete', { method: 'POST' })
+      state.onboarding = await req('/v1/admin/onboarding')
+      await show('overview')
+    })
+  }
+
+  const paint = async () => {
+    paintRail()
+    if (current === 'basics') await basics()
+    else if (current === 'leave') await leave()
+    else if (current === 'handbook') await handbook()
+    else await staff()
+  }
+
+  section.querySelector('#wiz-skip')?.addEventListener('click', async () => {
+    await req('/v1/admin/onboarding/complete', { method: 'POST' })
+    state.onboarding = await req('/v1/admin/onboarding')
+    await show('overview')
+  })
+
+  await paint()
+  return section
+}
+
 VIEWS.overview = async () => {
   await refreshReference()
   const pendingDevices = await req('/v1/admin/devices/pending')
   const active = state.employees.filter((e) => e.status === 'active').length
 
+  const ob = state.onboarding
   return el(`<section>
+    ${ob && !ob.completedAt ? `<div class="setup-banner">
+        <span>Setup is not finished — ${ob.steps.filter((x) => x.done).length} of ${ob.steps.length} steps done.</span>
+        <button class="btn" onclick="window.__show('setup')">Continue setup</button>
+      </div>` : ''}
     <h2>Overview</h2>
     <p class="lede">${esc(state.me.config.org.name)} · ${esc(state.me.config.org.timezone)}</p>
     <div class="grid">
@@ -1791,6 +2089,11 @@ VIEWS.settings = async () => {
   const s = org.settings
   const section = el(`<section>
     <h2>Settings</h2>
+    <div class="card">
+      <h3>Setup wizard</h3>
+      <p class="hint">Walk through company, leave, policies and staff again. Nothing is reset — it just reopens the guided steps.</p>
+      <div class="actions"><button class="btn secondary" onclick="fetch(location.origin+'/v1/admin/onboarding/reopen',{method:'POST',headers:{authorization:'Bearer '+sessionStorage.getItem('qh.access')}}).then(()=>window.__show('setup'))">Reopen setup</button></div>
+    </div>
     <p class="lede">Org-wide rules. The rounding rule especially — every org has an opinion and they all differ.</p>
     <div class="card">
       <div class="grid">

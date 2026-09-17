@@ -718,3 +718,23 @@ export function useCreateMeeting() {
     },
   })
 }
+
+export interface AskResult {
+  answered: boolean
+  answer: string
+  citations: { document: string; excerpt: string }[]
+  documentsConsulted: number
+  model: string | null
+  answeredAt: string
+}
+
+/**
+ * The policy assistant. A mutation rather than a query because every question
+ * is a fresh, paid model call — nothing about it should be cached or refetched
+ * on focus.
+ */
+export function useAskPolicy() {
+  return useMutation({
+    mutationFn: (question: string) => api.post<AskResult>('/v1/ask', { question }),
+  })
+}

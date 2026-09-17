@@ -1,35 +1,47 @@
 /**
  * Policy assistant — screens E14 / E15.
  *
- * The chrome is built to the design; the answering is not, and deliberately so.
+ * Connected now. It answers from the policies HR uploaded during setup and
+ * from nothing else, which is what makes it safe to put in front of someone
+ * asking about their own pay or leave.
  *
- * Spec §5.6 sets three non-negotiables: every answer cites the clause it came
- * from, the assistant says "I don't know" rather than improvising, and the
- * corpus is isolated per organisation at the index level. Meeting those needs
- * an embedding model, a retrieval index over uploaded policy documents, and a
- * language model — none of which exist in this build.
+ * Three states, and all three are designed rather than defaulted:
  *
- * The screen therefore renders the composer and the answer shapes, and states
- * plainly that it is not connected. A convincing mock would be worse than
- * nothing here: the failure mode of this feature is an employee acting on an
- * invented policy, and the fastest way to get there is a demo that answers.
+ *   - **Answered**, with every claim tied to a named document and a quoted
+ *     line. The citations are not decoration; they are what lets the employee
+ *     check the assistant rather than trust it.
+ *   - **Not answered** — the documents do not cover it. Rendered as a proper
+ *     state (screen E15), never as an error, because "I don't know" is the
+ *     correct answer to a question the handbook does not address and an
+ *     employee should feel fine asking HR instead.
+ *   - **Not available** — nothing uploaded yet, or the assistant is not
+ *     connected on this deployment. Says which.
  */
 
 import { useState } from 'react'
 import { StyleSheet, Text, TextInput, View } from 'react-native'
 import { useRouter } from 'expo-router'
-import { Appear, Button, Card, Screen } from '../src/ui/components'
+import { Appear, Button, Card, Screen, Skeleton } from '../src/ui/components'
 import { Label } from '../src/ui/primitives'
 import { colour, font, radius, space } from '../src/ui/theme'
-import { useMe } from '../src/api/queries'
+import { useAskPolicy, useMe, type AskResult } from '../src/api/queries'
 
 export default function Ask() {
   const router = useRouter()
   const me = useMe()
+  const ask = useAskPolicy()
   const [question, setQuestion] = useState('')
   const [asked, setAsked] = useState<string | null>(null)
 
   const orgName = me.data?.config.org.name ?? 'your organisation'
+
+  const submit = () => {
+    const q = question.trim()
+    if (q.length < 3 || ask.isPending) return
+    setAsked(q)
+    setQuestion('')
+    ask.mutate(q)
+  }
 
   return (
     <Screen>
@@ -44,50 +56,38 @@ export default function Ask() {
 
       {asked ? (
         <>
-          <Appear index={1}>
+          <Appear index={1} from="side">
             <View style={styles.question}>
               <Text style={styles.questionText}>{asked}</Text>
             </View>
           </Appear>
 
-          {/* The designed "no answer in corpus" state (E15) is the honest one
-              to show while retrieval is unbuilt. */}
           <Appear index={2}>
-            <Card style={styles.answer}>
-              <Text style={styles.answerText}>
-                I can&apos;t answer that yet. The policy assistant is not connected in this
-                build — there is no policy corpus uploaded and no retrieval index to search.
-              </Text>
-              <Text style={styles.answerMuted}>
-                I won&apos;t guess at something that affects your pay or your standing. Ask your
-                HR team directly for now.
-              </Text>
-            </Card>
-          </Appear>
-
-          <Appear index={3}>
-            <Card>
-              <Label>What this needs before it can answer</Label>
-              <Text style={styles.todo}>
-                · Policy documents uploaded per organisation{'\n'}
-                · An embedding index, isolated per tenant{'\n'}
-                · A language model to draft the cited answer
-              </Text>
-              <Text style={styles.answerMuted}>
-                Retrieval must be isolated at the index level, not by filtering a shared index.
-                One organisation&apos;s handbook surfacing in another&apos;s assistant is the
-                highest-severity failure in this product.
-              </Text>
-            </Card>
+            {ask.isPending ? (
+              <Card style={styles.answer}>
+                <Skeleton height={16} />
+                <Skeleton height={16} width="80%" />
+                <Skeleton height={16} width="60%" />
+              </Card>
+            ) : ask.isError ? (
+              <Card style={styles.answer}>
+                <Text style={styles.answerText}>
+                  That could not be answered right now. Ask your HR team directly for the
+                  time being.
+                </Text>
+              </Card>
+            ) : ask.data ? (
+              <Answer result={ask.data} />
+            ) : null}
           </Appear>
         </>
       ) : (
         <Appear index={1}>
           <Card>
             <Text style={styles.intro}>
-              Ask about leave, pay, conduct or anything in your handbook. Answers cite the
-              policy and clause they came from, and your own figures come from your record
-              rather than from a model.
+              Ask about leave, pay, conduct or anything in your handbook. Every answer cites
+              the policy and the line it came from, and if the policies do not cover it,
+              it says so rather than guessing.
             </Text>
           </Card>
         </Appear>
@@ -101,21 +101,74 @@ export default function Ask() {
             placeholder="Ask about leave, pay, conduct…"
             placeholderTextColor={colour.textFaint}
             style={styles.input}
-            onSubmitEditing={() => {
-              if (question.trim()) {
-                setAsked(question.trim())
-                setQuestion('')
-              }
-            }}
+            onSubmitEditing={submit}
+            returnKeyType="send"
+            editable={!ask.isPending}
             accessibilityLabel="Your question"
           />
         </View>
       </Appear>
 
       <Appear index={5}>
+        <Button
+          label="Ask"
+          onPress={submit}
+          disabled={question.trim().length < 3}
+          loading={ask.isPending}
+        />
+      </Appear>
+
+      <Appear index={6}>
         <Button label="Back" variant="ghost" onPress={() => router.back()} />
       </Appear>
     </Screen>
+  )
+}
+
+function Answer({ result }: { result: AskResult }) {
+  if (result.documentsConsulted === 0 || result.model === null) {
+    // Nothing to search, or the assistant is not connected. The server says
+    // which in `answer`; either way the honest state is "ask HR".
+    return (
+      <Card style={styles.answer}>
+        <Text style={styles.answerText}>{result.answer}</Text>
+      </Card>
+    )
+  }
+
+  if (!result.answered) {
+    return (
+      <Card style={styles.answer}>
+        <Label>Not in your policies</Label>
+        <Text style={styles.answerText}>{result.answer}</Text>
+        <Text style={styles.answerMuted}>
+          I only answer from what {`your organisation`} has uploaded, and I will not guess at
+          something that affects your pay or your standing. Ask your HR team directly.
+        </Text>
+      </Card>
+    )
+  }
+
+  return (
+    <Card style={styles.answer}>
+      <Text style={styles.answerText}>{result.answer}</Text>
+
+      <View style={styles.citations}>
+        <Label>From your policies</Label>
+        {result.citations.map((c, i) => (
+          <View key={i} style={styles.citation}>
+            <Text style={styles.citationDoc}>{c.document}</Text>
+            <Text style={styles.citationExcerpt}>“{c.excerpt}”</Text>
+          </View>
+        ))}
+      </View>
+
+      <Text style={styles.answerMuted}>
+        Checked against {result.documentsConsulted}{' '}
+        {result.documentsConsulted === 1 ? 'document' : 'documents'}. If something here
+        looks wrong, the quoted line is what to show HR.
+      </Text>
+    </Card>
   )
 }
 
@@ -125,11 +178,11 @@ const styles = StyleSheet.create({
     width: 38,
     height: 38,
     borderRadius: radius.sm,
-    backgroundColor: colour.pending,
+    backgroundColor: colour.pendingSoft,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  aiGlyph: { color: colour.text, fontSize: 16 },
+  aiGlyph: { color: colour.pending, fontSize: 16 },
 
   question: {
     alignSelf: 'flex-end',
@@ -146,7 +199,7 @@ const styles = StyleSheet.create({
     fontFamily: font.family,
   },
 
-  answer: { borderColor: colour.primaryBorder },
+  answer: { borderColor: colour.pendingSoft },
   answerText: {
     fontSize: font.size.md,
     color: colour.text,
@@ -159,11 +212,27 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     fontFamily: font.family,
   },
-  todo: {
+
+  citations: { gap: space.sm, paddingTop: space.xs },
+  citation: {
+    borderLeftWidth: 3,
+    borderLeftColor: colour.pending,
+    paddingLeft: space.md,
+    gap: 2,
+  },
+  citationDoc: {
+    fontSize: font.size.xs,
+    color: colour.textMuted,
+    fontFamily: font.mono,
+    textTransform: 'uppercase',
+    letterSpacing: font.tracking.wide,
+  },
+  citationExcerpt: {
     fontSize: font.size.sm,
     color: colour.text,
-    lineHeight: 22,
-    fontFamily: font.mono,
+    lineHeight: 21,
+    fontStyle: 'italic',
+    fontFamily: font.family,
   },
 
   intro: {
