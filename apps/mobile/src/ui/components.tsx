@@ -27,6 +27,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type RefreshControlProps,
   type StyleProp,
   type TextStyle,
   type ViewStyle,
@@ -55,7 +56,7 @@ export function Screen({
 }: {
   children: ReactNode
   scroll?: boolean
-  refreshControl?: React.ReactElement
+  refreshControl?: React.ReactElement<RefreshControlProps>
   /**
    * Pinned above the content, outside the scroll. A floating action inside a
    * ScrollView scrolls away with the page, which defeats the point of it.

@@ -26,6 +26,7 @@ export type NotificationEvent =
   | 'meeting.action_assigned'
   | 'meeting.dispute_raised'
   | 'meeting.recording_started'
+  | 'attendance.dispute_resolved'
 
 export interface NotificationInput {
   orgId: string
@@ -56,6 +57,10 @@ const PREFERENCE_KEY: Record<NotificationEvent, string> = {
   // and a preference that can suppress it would defeat the consent it exists
   // to give (meeting spec §8.1).
   'meeting.recording_started': 'recordingAlerts',
+  // No dedicated preference category for attendance exists yet beyond the
+  // check-in reminder itself, and this is close enough to that family not to
+  // warrant a fifth one.
+  'attendance.dispute_resolved': 'checkinReminders',
 }
 
 /**

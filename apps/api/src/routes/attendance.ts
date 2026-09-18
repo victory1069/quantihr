@@ -373,8 +373,17 @@ export function registerAttendanceRoutes(app: FastifyInstance, db: Database): vo
           recordId: record.id,
           employeeId: auth.employeeId,
           reason: body.reason,
+          // So a dismissal can restore this exactly rather than guess.
+          previousStatus: record.status,
         })
         .returning()
+
+      // Otherwise a disputed record looks identical to an undisputed one
+      // everywhere a manager might see it except a separate report count.
+      await tx
+        .update(attendanceRecords)
+        .set({ status: 'pending_review' })
+        .where(eq(attendanceRecords.id, record.id))
 
       await audit(tx, {
         orgId: auth.orgId,

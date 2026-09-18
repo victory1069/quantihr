@@ -22,6 +22,7 @@ export type AuditAction =
   | 'attendance.checked_in'
   | 'attendance.rejected'
   | 'attendance.disputed'
+  | 'attendance.dispute_resolved'
   | 'device.registered'
   | 'device.review_requested'
   | 'device.approved'

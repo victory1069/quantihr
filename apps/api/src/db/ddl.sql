@@ -257,13 +257,20 @@ create index if not exists attendance_history_idx
   on attendance_records (org_id, employee_id, date desc);
 
 create table if not exists attendance_disputes (
-  id          uuid primary key default gen_random_uuid(),
-  org_id      uuid not null references organisations(id) on delete cascade,
-  record_id   uuid not null references attendance_records(id) on delete cascade,
-  employee_id uuid not null references employees(id) on delete cascade,
-  reason      text not null,
-  status      text not null default 'open',
-  created_at  timestamptz not null default now()
+  id              uuid primary key default gen_random_uuid(),
+  org_id          uuid not null references organisations(id) on delete cascade,
+  record_id       uuid not null references attendance_records(id) on delete cascade,
+  employee_id     uuid not null references employees(id) on delete cascade,
+  reason          text not null,
+  status          text not null default 'open',
+  -- The record's own status when the dispute was raised (raising one flags
+  -- the record pending_review), so dismissing can restore it exactly.
+  previous_status text,
+  resolved_by     uuid references users(id) on delete set null,
+  resolved_at     timestamptz,
+  outcome         text,
+  note            text,
+  created_at      timestamptz not null default now()
 );
 
 -- ---------------------------------------------------------------------------

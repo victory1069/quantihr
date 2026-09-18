@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 8,
-    backgroundColor: colour.surfaceAlt,
+    backgroundColor: colour.surfaceSunken,
   },
   navDisabled: { opacity: 0.4 },
   navText: { fontSize: 22, color: colour.text, lineHeight: 26 },
@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
   personMeta: { fontSize: font.size.sm, color: colour.textMuted },
 
   drilldown: {
-    backgroundColor: colour.surfaceAlt,
+    backgroundColor: colour.surfaceSunken,
     borderRadius: 8,
     padding: space.md,
     gap: space.xs,

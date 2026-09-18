@@ -7,7 +7,7 @@
  * be run less often and would therefore catch less.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { eq } from 'drizzle-orm'
 import type { FastifyInstance } from 'fastify'
 import { buildServer } from '../src/server.js'
@@ -201,6 +201,15 @@ beforeAll(async () => {
   process.env.GOOGLE_MEET_DRIVER = 'fake'
   resetEnvCache()
 
+  // Every fixture in this file is anchored to 2026-09-07 via `at()`. Window
+  // checks like the dispute deadline (routes/meetings.ts) compare a fixture
+  // date against `new Date()` — real wall-clock time — so without pinning the
+  // clock this suite silently starts failing once enough real days pass since
+  // the fixture date, independent of any code change. Only `Date` is faked;
+  // timers stay real since nothing here depends on them.
+  vi.useFakeTimers({ toFake: ['Date'] })
+  vi.setSystemTime(new Date('2026-09-08T09:00:00.000Z'))
+
   db = await makeDatabase()
   org = await makeOrg(db, 'acme')
   other = await makeOrg(db, 'globex')
@@ -209,6 +218,7 @@ beforeAll(async () => {
 })
 
 afterAll(async () => {
+  vi.useRealTimers()
   setAnthropicClient(null)
   await app.close()
   await db.close()
