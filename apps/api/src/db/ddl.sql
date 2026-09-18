@@ -26,23 +26,25 @@ begin
     create role quanti_app nologin;
   end if;
 
-  -- The connecting user must be a MEMBER of quanti_app to `set role` into it.
-  -- Locally the connection is a superuser and can assume any role, so this was
-  -- never exercised. On managed Postgres (Render, RDS, Supabase) the connecting
-  -- user is an ordinary owner with CREATEROLE: on PG16+ creating a role grants
-  -- ADMIN over it but not SET — and `set local role quanti_app` fails with
-  -- 42501 on the first request, so the app never binds its port.
+  -- The connecting user must be able to `set role` into quanti_app.
   --
-  -- `current_user` is whoever this script runs as, which is the same user the
-  -- app will connect as. Idempotent: granting an existing membership is a no-op.
-  if not exists (
-    select 1 from pg_auth_members m
-    join pg_roles r on r.oid = m.roleid
-    join pg_roles u on u.oid = m.member
-    where r.rolname = 'quanti_app' and u.rolname = current_user
-  ) then
+  -- Locally the connection is a superuser and can assume any role, so this was
+  -- never exercised. On managed Postgres the connecting user is an ordinary
+  -- owner with CREATEROLE, and on PG16+ creating a role auto-inserts a
+  -- membership row for the creator with ADMIN but *without* SET — so a naive
+  -- "does membership exist?" guard finds that row and skips the grant, and
+  -- `set local role quanti_app` still fails with 42501. That guard is what
+  -- broke the first fix. Grant unconditionally, with SET stated explicitly.
+  --
+  -- The PG16 `WITH SET TRUE` form is tried first; on an older server that is
+  -- a syntax error and the plain grant — where membership alone confers SET —
+  -- is used instead. `current_user` is whoever runs this script, which is the
+  -- same user the app connects as.
+  begin
+    execute format('grant quanti_app to %I with set true, inherit true', current_user);
+  exception when syntax_error or feature_not_supported then
     execute format('grant quanti_app to %I', current_user);
-  end if;
+  end;
 end $$;
 
 -- ---------------------------------------------------------------------------
