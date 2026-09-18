@@ -24,9 +24,9 @@ import {
   Card,
   EmptyState,
   Fab,
-  Screen,
   SectionTitle,
   Skeleton,
+  SheetPage,
 } from '../../src/ui/components'
 import { colour, font, radius, space } from '../../src/ui/theme'
 import { useMe, useMeetings, useTeamCalendar } from '../../src/api/queries'
@@ -94,14 +94,16 @@ export default function TeamCalendar() {
   const cells = useMemo(() => buildGrid(first, last), [first, last])
 
   return (
-    <Screen
+    <SheetPage
+      tone={canManage ? 'manager' : 'default'}
+      eyebrow="Team"
+      title={label}
       floating={
         canManage ? (
           <Fab label="Create a meeting" onPress={() => router.push('/meetings/new')} />
         ) : null
       }
     >
-      <Text style={styles.title}>Team calendar</Text>
 
       <Card>
         <View style={styles.monthNav}>
@@ -241,7 +243,7 @@ export default function TeamCalendar() {
           }
         />
       ) : null}
-    </Screen>
+    </SheetPage>
   )
 }
 

@@ -10,7 +10,9 @@ import { useEffect, useState } from 'react'
 import { RefreshControl, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useQueryClient } from '@tanstack/react-query'
-import { Badge, Button, Card, EmptyState, Screen, Skeleton } from '../../src/ui/components'
+import { Badge, Button, Card, EmptyState, Screen, Skeleton,
+  SheetPage,
+} from '../../src/ui/components'
 import { colour, font, space } from '../../src/ui/theme'
 import { keys, usePayslips } from '../../src/api/queries'
 import { authenticate } from '../../src/ui/BiometricGate'
@@ -39,19 +41,17 @@ export default function Payslips() {
 
   if (checking) {
     return (
-      <Screen>
-        <Text style={styles.title}>Pay</Text>
+      <SheetPage title="Pay">
         <Card>
           <Skeleton height={20} />
         </Card>
-      </Screen>
+      </SheetPage>
     )
   }
 
   if (!unlocked) {
     return (
-      <Screen>
-        <Text style={styles.title}>Pay</Text>
+      <SheetPage title="Pay">
         <Card>
           <Text style={styles.locked}>
             Your payslips are locked. Unlock with biometrics to view them.
@@ -67,12 +67,13 @@ export default function Payslips() {
             }}
           />
         </Card>
-      </Screen>
+      </SheetPage>
     )
   }
 
   return (
-    <Screen
+    <SheetPage
+      title="Pay"
       refreshControl={
         <RefreshControl
           refreshing={payslips.isRefetching}
@@ -81,8 +82,6 @@ export default function Payslips() {
         />
       }
     >
-      <Text style={styles.title}>Pay</Text>
-
       {payslips.data ? (
         payslips.data.payslips.length > 0 ? (
           payslips.data.payslips.map((p) => (
@@ -116,7 +115,7 @@ export default function Payslips() {
           <Skeleton height={44} />
         </Card>
       )}
-    </Screen>
+    </SheetPage>
   )
 }
 
@@ -127,12 +126,6 @@ function monthLabel(iso: string): string {
 }
 
 const styles = StyleSheet.create({
-  title: {
-    fontSize: font.size.xxl,
-    fontWeight: font.weight.bold,
-    color: colour.text,
-    paddingTop: space.lg,
-  },
   locked: { fontSize: font.size.md, color: colour.textMuted, lineHeight: 21 },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   period: { fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colour.text },

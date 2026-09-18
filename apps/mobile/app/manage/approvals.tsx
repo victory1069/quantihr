@@ -29,8 +29,8 @@ import {
   EmptyState,
   ErrorNotice,
   Press,
-  Screen,
   Skeleton,
+  SheetPage,
 } from '../../src/ui/components'
 import { colour, font, radius, space } from '../../src/ui/theme'
 import { keys, useApprovals, useDecideApproval, useMe } from '../../src/api/queries'
@@ -55,23 +55,23 @@ export default function Approvals() {
 
   if (!me) {
     return (
-      <Screen>
+      <SheetPage tone="manager" eyebrow="Manager mode" title="Loading">
         <Card>
           <Skeleton height={24} width={160} />
           <Skeleton height={64} />
         </Card>
-      </Screen>
+      </SheetPage>
     )
   }
 
   if (!canManage) {
     return (
-      <Screen>
+      <SheetPage title="Approvals">
         <EmptyState
           title="Manager access only"
           body="Your account does not have approval permissions."
         />
-      </Screen>
+      </SheetPage>
     )
   }
 
@@ -109,17 +109,28 @@ export default function Approvals() {
     }
   }
 
+  const waiting = approvals.data?.approvals.length ?? 0
+  const oldest = approvals.data?.approvals.reduce((max, a) => Math.max(max, a.waitingHours), 0) ?? 0
+  const escalatesIn = oldest > 0 ? Math.max(0, Math.round(48 - oldest)) : null
+
   return (
-    <Screen
+    <SheetPage
+      tone="manager"
+      eyebrow="Manager mode"
+      title={waiting === 0 ? 'Nothing waiting' : `${waiting} need you`}
       refreshControl={
         <RefreshControl
           refreshing={approvals.isRefetching}
           onRefresh={() => void queryClient.invalidateQueries({ queryKey: keys.approvals })}
-          tintColor={colour.primary}
+          tintColor={colour.accent}
         />
       }
     >
-      <Text style={styles.title}>Approvals</Text>
+      {escalatesIn !== null && waiting > 0 ? (
+        <Text style={styles.escalates}>
+          {escalatesIn === 0 ? '1 has passed the 48-hour mark' : `1 escalates in ${escalatesIn} hours`}
+        </Text>
+      ) : null}
 
       {approvals.data ? (
         approvals.data.approvals.length > 0 ? (
@@ -253,7 +264,7 @@ export default function Approvals() {
           <Skeleton height={80} />
         </Card>
       )}
-    </Screen>
+    </SheetPage>
   )
 }
 
@@ -303,12 +314,7 @@ function Context({
 }
 
 const styles = StyleSheet.create({
-  title: {
-    fontSize: font.size.xxl,
-    fontWeight: font.weight.bold,
-    color: colour.text,
-    paddingTop: space.lg,
-  },
+  escalates: { fontSize: font.size.md, color: colour.textMuted, fontFamily: font.family, marginTop: -space.sm },
   summaryRow: { flexDirection: 'row', gap: space.md, alignItems: 'center' },
   summaryMain: { flex: 1, gap: 2 },
   summaryEnd: { alignItems: 'flex-end', gap: space.xs },

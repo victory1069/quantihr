@@ -121,8 +121,12 @@ export default function RootLayout() {
             screenOptions={{
               headerShown: false,
               contentStyle: { backgroundColor: colour.bg },
-              animation: 'fade',
-              animationDuration: 180,
+              // Pushed screens slide up like a sheet, matching how content
+              // arrives inside a page; a fade for the tab roots so switching
+              // tabs feels like changing what is under the bar, not opening a
+              // new thing.
+              animation: 'slide_from_bottom',
+              animationDuration: 260,
             }}
           />
           {status === 'authenticated' && !fullScreen ? (
