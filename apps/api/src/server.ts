@@ -62,6 +62,10 @@ export async function buildServer(db: Database): Promise<FastifyInstance> {
 
   app.get('/console', serveConsole)
   app.get('/console/', serveConsole)
+  // Sign-in links are `${APP_URL}/auth/callback?token=…`. With APP_URL set to
+  // the console (…/console), that lands here; the page reads the token from
+  // the query string on boot, so it just needs to be served.
+  app.get('/console/auth/callback', serveConsole)
 
   // Optional backdrop for the sign-in hero. Drop a clip at src/console/hero.mp4
   // and it plays; with no file this 404s and the page falls back to the
