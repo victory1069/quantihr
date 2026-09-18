@@ -50,6 +50,9 @@ export const users = pgTable('users', {
   lastLoginAt: timestamp('last_login_at', { withTimezone: true }),
   pushToken: text('push_token'),
   biometricEnabled: boolean('biometric_enabled').notNull().default(false),
+  passwordHash: text('password_hash'),
+  mustChangePassword: boolean('must_change_password').notNull().default(false),
+  passwordChangedAt: timestamp('password_changed_at', { withTimezone: true }),
   notificationPreferences: jsonb('notification_preferences').notNull(),
   createdAt: createdAt(),
 })

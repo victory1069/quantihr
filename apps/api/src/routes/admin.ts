@@ -35,6 +35,7 @@ import {
 import type { Database, Tx } from '../db/client.js'
 import { audit, redact } from '../lib/audit.js'
 import { requireRole, tenant } from '../lib/context.js'
+import { generateTemporaryPassword, hashPassword } from '../lib/password.js'
 import { storage } from '../lib/storage.js'
 import { orgClock } from '../lib/time.js'
 import { ensureBalance, toLeaveTypeView } from './leave.js'
@@ -379,6 +380,53 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database): void {
    * This only reads. Nothing is written, and the caller still has to run the
    * result through validate and commit like any pasted CSV.
    */
+  /**
+   * A fresh temporary password for one employee.
+   *
+   * For the person who lost their Post-it, and the only way a temporary
+   * password can be seen after creation — they are hashed at rest and never
+   * read back. The new one forces a change on next sign-in like the first did.
+   */
+  app.post('/v1/admin/employees/:id/reset-password', async (request, reply) => {
+    const auth = requireRole(request, 'hr_admin', 'owner')
+    const { id } = request.params as { id: string }
+
+    const temporaryPassword = generateTemporaryPassword()
+
+    const target = await tenant(request, async (tx) => {
+      const [employee] = await tx
+        .select({ id: employees.id, userId: employees.userId, email: employees.email })
+        .from(employees)
+        .where(eq(employees.id, id))
+        .limit(1)
+      if (!employee?.userId) {
+        throw new ApiError(ERROR_CODES.NOT_FOUND, 'No such employee', 404)
+      }
+
+      await tx
+        .update(users)
+        .set({
+          passwordHash: await hashPassword(temporaryPassword),
+          mustChangePassword: true,
+          passwordChangedAt: new Date(),
+        })
+        .where(eq(users.id, employee.userId))
+
+      await audit(tx, {
+        orgId: auth.orgId,
+        actorUserId: auth.userId,
+        action: 'auth.password_reset',
+        entityType: 'user',
+        entityId: employee.userId,
+        ip: request.ip,
+      })
+
+      return employee
+    })
+
+    return reply.send({ employeeId: target.id, email: target.email, temporaryPassword })
+  })
+
   app.post('/v1/admin/employees/import/parse', async (request, reply) => {
     requireRole(request, 'hr_admin', 'owner')
     const body = z
@@ -481,10 +529,15 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database): void {
       const rows = body.rows.map((raw, i) => validateImportRow(raw, i + 2, byNumber))
       const errorCount = rows.filter((r) => r.result.action === 'error').length
 
+      // Temporary passwords for every account the import created, returned
+      // once so HR can hand them over. They are never retrievable again —
+      // the reset endpoint issues a fresh one instead.
+      const credentials: { employeeNumber: string; email: string; temporaryPassword: string }[] = []
+
       if (body.mode === 'commit' && errorCount === 0) {
         for (const row of rows) {
           if (!row.parsed) continue
-          await upsertEmployee(
+          const saved = await upsertEmployee(
             tx,
             auth.orgId,
             {
@@ -493,6 +546,13 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database): void {
             },
             auth.userId,
           )
+          if (saved.temporaryPassword) {
+            credentials.push({
+              employeeNumber: saved.employeeNumber,
+              email: saved.email,
+              temporaryPassword: saved.temporaryPassword,
+            })
+          }
         }
         await audit(tx, {
           orgId: auth.orgId,
@@ -513,6 +573,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database): void {
         errorCount,
         rows: rows.map((r) => r.result),
         committed: body.mode === 'commit' && errorCount === 0,
+        credentials,
       }
     })
 
@@ -807,12 +868,18 @@ async function upsertEmployee(
     .limit(1)
 
   let userId = existingUser?.id
+  // Only a brand-new account gets a temporary password. Updating an existing
+  // employee must never rotate their credential underneath them.
+  let temporaryPassword: string | null = null
   if (!userId) {
+    temporaryPassword = generateTemporaryPassword()
     const [created] = await tx
       .insert(users)
       .values({
         orgId,
         email: body.email,
+        passwordHash: await hashPassword(temporaryPassword),
+        mustChangePassword: true,
         notificationPreferences: {
           leaveDecisions: true,
           checkinReminders: true,
@@ -864,7 +931,7 @@ async function upsertEmployee(
     after: redact({ ...values, phone: values.phone }),
   })
 
-  return row!
+  return { ...row!, temporaryPassword }
 }
 
 interface ImportRowOutcome {

@@ -40,6 +40,8 @@ export function registerMeRoutes(app: FastifyInstance, _db: Database): void {
           email: user.email,
           biometricEnabled: user.biometricEnabled,
           notificationPreferences: user.notificationPreferences,
+          hasPassword: user.passwordHash !== null,
+          mustChangePassword: user.mustChangePassword,
         },
         employee: {
           id: ctx.employee.id,

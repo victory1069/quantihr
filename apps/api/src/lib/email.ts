@@ -198,3 +198,49 @@ ${link}
 If you did not ask for this, ignore this email.`,
   }
 }
+
+/**
+ * First-sign-in email for a provisioned HR admin.
+ *
+ * Carries both doors: the link, and the temporary password for when the link
+ * cannot be opened on the device they are setting up. Either one lands them
+ * on the change-password screen before anything else.
+ */
+export function welcomeEmail(link: string, temporaryPassword: string): EmailMessage {
+  return {
+    to: '',
+    subject: 'Your Quanti HR account is ready',
+    html: shell(
+      'Your account is ready',
+      `<p style="font-size:15px;line-height:23px;color:#22333f;margin:0 0 20px;">
+         Tap the button to sign in. The link works once and lasts 24 hours.
+       </p>
+       <a href="${link}"
+          style="display:inline-block;background:#06111A;color:#ffffff;text-decoration:none;
+                 font-size:15px;font-weight:600;padding:14px 28px;border-radius:10px;">
+         Sign in
+       </a>
+       <p style="font-size:14px;line-height:22px;color:#22333f;margin:28px 0 6px;">
+         Or sign in with your email and this temporary password:
+       </p>
+       <p style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:20px;letter-spacing:2px;
+                 color:#06111A;background:#f4f6f8;padding:12px 16px;border-radius:8px;display:inline-block;margin:0;">
+         ${temporaryPassword}
+       </p>
+       <p style="font-size:13px;line-height:20px;color:#6b7f8d;margin:20px 0 0;">
+         You will be asked to choose your own password the first time you sign in.
+       </p>`,
+      `If you were not expecting this, ignore it — nothing happens until the link is opened
+       or the password is used, and both stop working once you have chosen your own.`,
+    ),
+    text: `Your Quanti HR account is ready
+
+Sign in with this link (works once, lasts 24 hours):
+${link}
+
+Or sign in with your email and this temporary password:
+${temporaryPassword}
+
+You will be asked to choose your own password the first time you sign in.`,
+  }
+}

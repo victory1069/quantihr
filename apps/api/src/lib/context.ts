@@ -54,6 +54,9 @@ const PUBLIC_ROUTES = new Set([
   'POST:/v1/auth/magic-link',
   'POST:/v1/auth/verify',
   'POST:/v1/auth/refresh',
+  // The password door. Rate-limited per IP in the route; the change endpoint
+  // is deliberately NOT here — it needs the session the sign-in issued.
+  'POST:/v1/auth/password',
   // Pre-tenant sign-up lookups; rate-limited in the route.
   'GET:/v1/auth/invite',
   'POST:/v1/auth/otp/request',

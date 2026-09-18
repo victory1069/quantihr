@@ -41,6 +41,8 @@ export type AuditAction =
   | 'meeting.checkin_code_issued'
   | 'org.onboarding_completed'
   | 'policy.removed'
+  | 'auth.password_reset'
+  | 'auth.password_changed'
   | 'policy.uploaded'
   | 'org.provisioned'
 

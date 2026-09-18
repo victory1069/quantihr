@@ -57,7 +57,14 @@ export const configResponse = z.object({
 })
 
 export const meResponse = z.object({
-  user: z.object({ id: uuid, email: z.string(), biometricEnabled: z.boolean() }),
+  user: z.object({
+    id: uuid,
+    email: z.string(),
+    biometricEnabled: z.boolean(),
+    hasPassword: z.boolean(),
+    /** Signed in with a temporary password; the app goes to change-password and nowhere else. */
+    mustChangePassword: z.boolean(),
+  }),
   employee: z.object({
     id: uuid,
     employeeNumber: z.string(),

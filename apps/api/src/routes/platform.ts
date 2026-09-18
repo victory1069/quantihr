@@ -27,7 +27,8 @@ import { ApiError, DEFAULT_ORG_SETTINGS, ERROR_CODES } from '@quanti/shared'
 import { employees, magicLinkTokens, organisations, users, workSchedules } from '../db/schema.js'
 import type { Database } from '../db/client.js'
 import { audit } from '../lib/audit.js'
-import { magicLinkEmail, sendEmail } from '../lib/email.js'
+import { sendEmail, welcomeEmail } from '../lib/email.js'
+import { generateTemporaryPassword, hashPassword } from '../lib/password.js'
 import { env } from '../lib/env.js'
 import { expiryFromNow, hashToken, randomToken } from '../lib/tokens.js'
 
@@ -90,6 +91,7 @@ export function registerPlatformRoutes(app: FastifyInstance, db: Database): void
 
     const orgId = randomUUID()
     const token = randomToken()
+    const temporaryPassword = generateTemporaryPassword()
 
     const result = await db.withTenant(orgId, async (tx) => {
       const [org] = await tx
@@ -126,6 +128,8 @@ export function registerPlatformRoutes(app: FastifyInstance, db: Database): void
         .values({
           orgId,
           email,
+          passwordHash: await hashPassword(temporaryPassword),
+          mustChangePassword: true,
           notificationPreferences: {
             leaveDecisions: true,
             checkinReminders: true,
@@ -181,7 +185,7 @@ export function registerPlatformRoutes(app: FastifyInstance, db: Database): void
     const link = `${env().APP_URL}/auth/callback?token=${token}`
 
     try {
-      const sent = await sendEmail({ ...magicLinkEmail(link, 24 * 60), to: email })
+      const sent = await sendEmail({ ...welcomeEmail(link, temporaryPassword), to: email })
       request.log.info(
         { orgId, messageId: sent.messageId, driver: sent.driver },
         'provisioning welcome sent',
@@ -207,8 +211,10 @@ export function registerPlatformRoutes(app: FastifyInstance, db: Database): void
       // Returned to the operator regardless of environment: this is an
       // authenticated platform call, not the public magic-link endpoint, and
       // the person holding the platform key is the one who would read the
-      // mail log anyway.
+      // mail log anyway. The temporary password is shown here once and is
+      // hashed at rest; the HR reset endpoint issues a fresh one if it is lost.
       signInLink: link,
+      temporaryPassword,
     })
   })
 }

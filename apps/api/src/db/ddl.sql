@@ -74,6 +74,13 @@ create table if not exists users (
   last_login_at     timestamptz,
   push_token        text,
   biometric_enabled boolean not null default false,
+  -- Password is a second sign-in method beside the magic link, added so HR
+  -- can hand a new joiner credentials on paper. Null means link-only. A
+  -- temporary password sets must_change_password, and the app refuses to go
+  -- anywhere else until it is replaced.
+  password_hash        text,
+  must_change_password boolean not null default false,
+  password_changed_at  timestamptz,
   notification_preferences jsonb not null default
     '{"leaveDecisions":true,"checkinReminders":true,"balanceExpiry":true,"documents":true}'::jsonb,
   created_at        timestamptz not null default now(),
@@ -778,6 +785,10 @@ alter table meetings add column if not exists checkin_code_expires_at timestampt
 
 alter table meeting_actions add column if not exists completed_at timestamptz;
 
+alter table users add column if not exists password_hash        text;
+alter table users add column if not exists must_change_password boolean not null default false;
+alter table users add column if not exists password_changed_at  timestamptz;
+
 -- ---------------------------------------------------------------------------
 -- Row-level security
 -- ---------------------------------------------------------------------------
@@ -877,10 +888,15 @@ revoke update, delete on audit_log from quanti_app;
 -- Nothing here should ever return a list of users, accept a pattern, or be
 -- granted to a role other than quanti_app.
 
-create or replace function auth_lookup_user(p_email text)
-returns table (user_id uuid, org_id uuid)
+-- Dropped first, not just replaced: `create or replace` refuses to change a
+-- function's return type, and this one grew two columns when passwords
+-- arrived. A deployment whose database predates that would fail to boot.
+-- The grant below is re-issued every run, so dropping loses nothing.
+drop function if exists auth_lookup_user(text);
+create function auth_lookup_user(p_email text)
+returns table (user_id uuid, org_id uuid, password_hash text, must_change_password boolean)
 language sql stable security definer set search_path = public as $$
-  select id, org_id from users where email = lower(trim(p_email)) limit 1
+  select id, org_id, password_hash, must_change_password from users where email = lower(trim(p_email)) limit 1
 $$;
 
 create or replace function auth_lookup_magic_link(p_token_hash text)

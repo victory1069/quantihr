@@ -43,6 +43,17 @@ describe('schema drift', () => {
 
     // And the seed's insert shape now works against it.
     await db.exec(`insert into organisations (name, onboarding_steps) values ('Drift Co', '[]'::jsonb)`)
+
+    // The password columns arrived later still, and the pre-tenant lookup's
+    // return type grew with them — which `create or replace` cannot do.
+    const lookup = await db.query<{ n: string }>(
+      `select count(*)::text as n from information_schema.columns where table_name='users' and column_name in ('password_hash','must_change_password','password_changed_at')`,
+    )
+    expect(lookup.rows[0]!.n).toBe('3')
+    const shape = await db.query<{ cols: string }>(
+      `select pg_get_function_result('auth_lookup_user'::regproc) as cols`,
+    )
+    expect(shape.rows[0]!.cols).toContain('must_change_password')
     await db.close()
   })
 })

@@ -41,7 +41,12 @@ export interface Database {
 }
 
 export interface LookupApi {
-  userByEmail(email: string): Promise<{ userId: string; orgId: string } | null>
+  userByEmail(email: string): Promise<{
+    userId: string
+    orgId: string
+    passwordHash: string | null
+    mustChangePassword: boolean
+  } | null>
   magicLink(tokenHash: string): Promise<{
     tokenId: string
     userId: string
@@ -200,7 +205,14 @@ function makeLookup(
     async userByEmail(email) {
       const r = await gate.run(() => exec('select * from auth_lookup_user($1)', [email]))
       const row = r[0]
-      return row ? { userId: String(row.user_id), orgId: String(row.org_id) } : null
+      return row
+        ? {
+            userId: String(row.user_id),
+            orgId: String(row.org_id),
+            passwordHash: row.password_hash ? String(row.password_hash) : null,
+            mustChangePassword: Boolean(row.must_change_password),
+          }
+        : null
     },
 
     async magicLink(tokenHash) {

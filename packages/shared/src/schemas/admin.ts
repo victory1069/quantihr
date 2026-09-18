@@ -107,6 +107,10 @@ export const bulkImportResponse = z.object({
   errorCount: z.number().int(),
   rows: z.array(bulkImportRowResult),
   committed: z.boolean(),
+  /** One temporary password per account the commit created. Shown once. */
+  credentials: z
+    .array(z.object({ employeeNumber: z.string(), email: z.string(), temporaryPassword: z.string() }))
+    .default([]),
 })
 
 export const adjustBalance = z.object({
