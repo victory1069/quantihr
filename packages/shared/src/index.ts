@@ -10,6 +10,17 @@ export {
 } from './schemas/config.js'
 export type { JwtClaims, SessionResponse } from './schemas/auth.js'
 export type { Role } from './schemas/common.js'
+export type { CheckinRequest, VerificationSignals, AttendanceStatusResponse } from './schemas/attendance.js'
+export type {
+  LeaveType,
+  LeaveBalanceView,
+  LeaveRequestView,
+  CheckConflictsResponse,
+  CreateLeaveRequest,
+  ApprovalDecision,
+} from './schemas/leave.js'
+export type { ApprovalItem, TeamCalendarResponse, TeamAttendanceResponse } from './schemas/team.js'
+export type { DocumentItem } from './schemas/documents.js'
 export {
   DEFAULT_MEETING_SETTINGS,
   type MeetingSettings,
