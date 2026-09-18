@@ -74,6 +74,23 @@ export const attendanceDispute = z.object({
   reason: z.string().min(10).max(1000),
 })
 
+/**
+ * A manager's decision on a dispute (spec §7). `attendanceStatus` is the
+ * corrected value and is required when upholding — there is no reasonable
+ * default for what "corrected" means, so the route refuses to guess one.
+ */
+export const resolveAttendanceDispute = z
+  .object({
+    outcome: z.enum(['upheld', 'dismissed']),
+    attendanceStatus: attendanceStatus.optional(),
+    note: z.string().max(1000).optional(),
+  })
+  .refine((body) => body.outcome !== 'upheld' || body.attendanceStatus !== undefined, {
+    message: 'attendanceStatus is required when upholding a dispute',
+    path: ['attendanceStatus'],
+  })
+
 export type CheckinRequest = z.infer<typeof checkinRequest>
 export type VerificationSignals = z.infer<typeof verificationSignals>
 export type AttendanceStatusResponse = z.infer<typeof attendanceStatusResponse>
+export type ResolveAttendanceDispute = z.infer<typeof resolveAttendanceDispute>
