@@ -149,7 +149,14 @@ export async function createPostgresDatabase(connectionString: string): Promise<
   const postgres = (await import('postgres')).default
   const { drizzle } = await import('drizzle-orm/postgres-js')
 
-  const client = postgres(connectionString, { max: 10 })
+  const client = postgres(connectionString, {
+    max: 10,
+    // Without these a dead or unreachable database makes boot hang silently
+    // rather than fail. Render's health check then never sees a port and
+    // holds every inbound request open — indistinguishable from "sleeping".
+    connect_timeout: 15,
+    idle_timeout: 30,
+  })
   const db = drizzle(client, { schema })
   // A real pool gives each transaction its own connection, so no mutex is
   // needed — SET LOCAL cannot leak across connections.

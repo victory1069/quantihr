@@ -16,15 +16,30 @@ import { sweepCheckinWindows, sweepPendingApprovals } from './jobs/reminders.js'
 import { flushNotifications } from './lib/notify.js'
 import { seedIfEmpty } from './db/seed.js'
 
+/**
+ * Each stage announces itself before it runs. On a managed host the only
+ * evidence of a failed boot is the log, and a process that goes quiet
+ * between "started" and "listening" is undiagnosable — which is exactly what
+ * a hung database connection looks like.
+ */
+const stage = (name: string) => console.log(`[boot] ${name}`)
+
 async function main() {
+  stage(`connecting to ${env().DATABASE_URL ? 'postgres' : 'pglite'}`)
   const db = await createDatabase()
+
+  stage('applying schema')
   await db.applySchema()
 
   if (env().NODE_ENV !== 'production') {
+    stage('seeding if empty')
     await seedIfEmpty(db)
   }
 
+  stage('building server')
   const app = await buildServer(db)
+
+  stage(`listening on ${env().HOST}:${env().PORT}`)
   await app.listen({ port: env().PORT, host: env().HOST })
 
   app.log.info(`Quanti HR API on :${env().PORT} (${db.driver})`)
