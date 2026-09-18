@@ -752,6 +752,32 @@ create table if not exists policy_documents (
 create index if not exists policy_documents_org_idx on policy_documents(org_id, created_at desc);
 
 -- ---------------------------------------------------------------------------
+-- Additive migrations
+-- ---------------------------------------------------------------------------
+
+-- `create table if not exists` is skipped entirely when the table already
+-- exists, so a column added to a CREATE above never reaches a database that was
+-- built before it. Locally that is invisible — PGlite is in-memory and every
+-- boot is a fresh database — and it surfaced on Render as
+-- `column "onboarding_steps" of relation "organisations" does not exist`.
+--
+-- The rule from here on: a column added to an existing table goes in the CREATE
+-- above (so a fresh database is right) AND here as an idempotent ALTER (so an
+-- existing one catches up). Both, every time. `add column if not exists` is a
+-- no-op when the column is already there, so this section is safe on every
+-- boot and never needs pruning.
+
+alter table organisations add column if not exists onboarding_steps        jsonb not null default '[]'::jsonb;
+alter table organisations add column if not exists onboarding_completed_at timestamptz;
+
+alter table meetings add column if not exists venue                   text;
+alter table meetings add column if not exists agenda                  text;
+alter table meetings add column if not exists checkin_code            text;
+alter table meetings add column if not exists checkin_code_expires_at timestamptz;
+
+alter table meeting_actions add column if not exists completed_at timestamptz;
+
+-- ---------------------------------------------------------------------------
 -- Row-level security
 -- ---------------------------------------------------------------------------
 --
