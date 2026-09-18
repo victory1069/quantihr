@@ -260,6 +260,11 @@ export default function Me() {
             variant="secondary"
             onPress={() => router.push('/profile')}
           />
+          <Button
+            label="Change password"
+            variant="ghost"
+            onPress={() => router.push('/change-password')}
+          />
         </Card>
       </Appear>
     </SheetPage>

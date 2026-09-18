@@ -10,7 +10,7 @@
  *    self-blame; masks, sunglasses and bright sun are the actual reasons, and
  *    naming them stops people retrying identically five times.
  *
- * The magic-link escape stays visible throughout. A passwordless product with
+ * The sign-in escape stays visible throughout. A product with
  * no visible way past a failed biometric is a product people get locked out of.
  */
 

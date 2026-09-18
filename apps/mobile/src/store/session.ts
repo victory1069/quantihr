@@ -76,7 +76,7 @@ export async function setTokens(access: string, refresh: string): Promise<void> 
 export async function clearTokens(): Promise<void> {
   accessToken = null
   await secure.remove(REFRESH_KEY)
-  useSession.setState({ status: 'signed-out', me: null, unlocked: false })
+  useSession.setState({ status: 'signed-out', me: null, unlocked: false, mustChangePassword: false })
 }
 
 /**
@@ -128,7 +128,15 @@ interface SessionState {
   /** True once the user has switched mode themselves. */
   modeChosen: boolean
   deviceReviewRequired: boolean
+  /**
+   * The account is still on the temporary password it was issued with. Set
+   * from whichever arrives first — the sign-in response or /v1/me — and the
+   * layout routes to the change screen while it is true. Nothing else in the
+   * app is reachable until it is cleared.
+   */
+  mustChangePassword: boolean
   setMe: (me: MeResponse | null) => void
+  setMustChangePassword: (on: boolean) => void
   setUnlocked: (unlocked: boolean) => void
   setManagerMode: (on: boolean) => void
   setDeviceReviewRequired: (on: boolean) => void
@@ -142,6 +150,7 @@ export const useSession = create<SessionState>((set) => ({
   managerMode: false,
   modeChosen: false,
   deviceReviewRequired: false,
+  mustChangePassword: false,
   /**
    * Setting the profile also picks the default mode.
    *
@@ -155,6 +164,7 @@ export const useSession = create<SessionState>((set) => ({
   setMe: (me) =>
     set((state) => ({
       me,
+      mustChangePassword: me?.user.mustChangePassword ?? state.mustChangePassword,
       managerMode: state.modeChosen
         ? state.managerMode
         : !!me?.roles.some((r) => r === 'manager' || r === 'hr_admin' || r === 'owner'),
@@ -162,6 +172,7 @@ export const useSession = create<SessionState>((set) => ({
   setUnlocked: (unlocked) => set({ unlocked }),
   setManagerMode: (managerMode) => set({ managerMode, modeChosen: true }),
   setDeviceReviewRequired: (deviceReviewRequired) => set({ deviceReviewRequired }),
+  setMustChangePassword: (mustChangePassword) => set({ mustChangePassword }),
   reset: () =>
     set({
       status: 'signed-out',
@@ -169,6 +180,7 @@ export const useSession = create<SessionState>((set) => ({
       unlocked: false,
       managerMode: false,
       modeChosen: false,
+      mustChangePassword: false,
     }),
 }))
 
@@ -197,7 +209,7 @@ export async function restoreSession(): Promise<boolean> {
     })
 
     if (!response.ok) {
-      // Expired or revoked — fall back to magic link, never a password screen.
+      // Expired or revoked — back to sign-in.
       await clearTokens()
       return false
     }
@@ -206,9 +218,13 @@ export async function restoreSession(): Promise<boolean> {
       accessToken: string
       refreshToken: string
       deviceReviewRequired: boolean
+      mustChangePassword?: boolean
     }
     await setTokens(session.accessToken, session.refreshToken)
-    useSession.setState({ deviceReviewRequired: session.deviceReviewRequired })
+    useSession.setState({
+      deviceReviewRequired: session.deviceReviewRequired,
+      mustChangePassword: session.mustChangePassword ?? false,
+    })
     return true
   } catch {
     // Offline at launch: keep the session and let cached data render. The app

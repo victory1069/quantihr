@@ -62,6 +62,7 @@ persistQueryClient({
 
 export default function RootLayout() {
   const status = useSession((s) => s.status)
+  const mustChangePassword = useSession((s) => s.mustChangePassword)
   const [bootstrapped, setBootstrapped] = useState(false)
   const router = useRouter()
   const segments = useSegments()
@@ -97,7 +98,8 @@ export default function RootLayout() {
     root === 'welcome' ||
     root === 'onboarding' ||
     root === 'unlock' ||
-    root === 'recover'
+    root === 'recover' ||
+    root === 'change-password'
 
   useEffect(() => {
     if (!bootstrapped) return
@@ -105,11 +107,16 @@ export default function RootLayout() {
     if (status === 'signed-out' && !onAuthRoute) {
       redirected.current = true
       router.replace('/sign-in')
+    } else if (status === 'authenticated' && mustChangePassword && root !== 'change-password') {
+      // A temporary password opens exactly one screen. This catches the
+      // case sign-in itself does not: a restored session, or /v1/me
+      // reporting the flag after HR reset the password remotely.
+      router.replace('/change-password')
     } else if (status === 'authenticated' && onAuthRoute && redirected.current) {
       redirected.current = false
       router.replace('/')
     }
-  }, [status, onAuthRoute, bootstrapped, router])
+  }, [status, mustChangePassword, root, onAuthRoute, bootstrapped, router])
 
   return (
     <SafeAreaProvider>
