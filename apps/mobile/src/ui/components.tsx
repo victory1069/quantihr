@@ -74,7 +74,7 @@ export function Screen({
         styles.scrollContent,
         // Room for the action to sit over the end of the list rather than on
         // top of the last row.
-        floating ? { paddingBottom: space.xxxl + 72 } : null,
+        floating ? { paddingBottom: 112 + 72 } : null,
       ]}
       refreshControl={refreshControl}
       keyboardShouldPersistTaps="handled"
@@ -92,6 +92,98 @@ export function Screen({
       <View style={styles.floating} pointerEvents="box-none">
         {floating}
       </View>
+    </View>
+  )
+}
+
+/**
+ * A page whose content rises in a sheet over its own title.
+ *
+ * The title sits dimmed at the top — it is context, not content — and the
+ * sheet carries everything the person came for. On mount the sheet springs up
+ * from below while the title fades in above it, so a screen arrives as one
+ * gesture rather than assembling itself. That is what "fluid" means here: the
+ * motion describes the structure (this is a layer over that) instead of
+ * decorating it.
+ *
+ * Transform and opacity only, so it runs on the native driver.
+ */
+export function SheetPage({
+  title,
+  eyebrow,
+  tone = 'default',
+  children,
+  refreshControl,
+  floating,
+}: {
+  title: string
+  /** Small line above the title — a date, a mode, a section. */
+  eyebrow?: string
+  /** `manager` tints the head violet, as the mockups do for manager mode. */
+  tone?: 'default' | 'manager'
+  children: ReactNode
+  refreshControl?: React.ReactElement
+  floating?: ReactNode
+}) {
+  const c = useColour()
+  const rise = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    Animated.spring(rise, { toValue: 1, useNativeDriver: true, ...motion.enter }).start()
+  }, [rise])
+
+  const headTint = tone === 'manager' ? c.accentSoft : 'transparent'
+
+  return (
+    <View style={[styles.screen, { backgroundColor: c.bg }]}>
+      <Animated.View
+        style={[
+          styles.sheetHead,
+          { backgroundColor: headTint },
+          { opacity: rise.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }) },
+        ]}
+      >
+        {eyebrow ? (
+          <Text style={[styles.sheetEyebrow, { color: tone === 'manager' ? c.accent : c.textMuted }]}>
+            {eyebrow}
+          </Text>
+        ) : null}
+        <Text style={[styles.sheetTitle, { color: c.textFaint }]} numberOfLines={2}>
+          {title}
+        </Text>
+      </Animated.View>
+
+      <Animated.View
+        style={[
+          styles.sheet,
+          { backgroundColor: c.surface, borderColor: c.border },
+          {
+            transform: [
+              { translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [48, 0] }) },
+            ],
+          },
+        ]}
+      >
+        <View style={[styles.sheetHandle, { backgroundColor: c.borderStrong }]} />
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingTop: space.sm },
+            floating ? { paddingBottom: 112 + 72 } : null,
+          ]}
+          refreshControl={refreshControl}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.column}>{children}</View>
+        </ScrollView>
+      </Animated.View>
+
+      {floating ? (
+        <View style={styles.floating} pointerEvents="box-none">
+          {floating}
+        </View>
+      ) : null}
     </View>
   )
 }
@@ -269,7 +361,7 @@ export function Card({
   children: ReactNode
   style?: StyleProp<ViewStyle>
   onPress?: () => void
-  tone?: 'default' | 'primary' | 'warning' | 'danger' | 'success'
+  tone?: 'default' | 'primary' | 'warning' | 'danger' | 'success' | 'pending'
 }) {
   const c = useColour()
   const scheme = useScheme()
@@ -624,6 +716,36 @@ export function Divider() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  sheetHead: {
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    paddingBottom: space.xl,
+    gap: space.xs,
+  },
+  sheetEyebrow: { fontSize: font.size.md, fontFamily: font.family },
+  sheetTitle: {
+    fontSize: font.size.display,
+    fontWeight: font.weight.bold,
+    letterSpacing: font.tracking.tight,
+    fontFamily: font.family,
+    lineHeight: 48,
+  },
+  sheet: {
+    flex: 1,
+    borderTopLeftRadius: radius.xl + 8,
+    borderTopRightRadius: radius.xl + 8,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    overflow: 'hidden',
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 44,
+    height: 4,
+    borderRadius: 2,
+    marginTop: space.md,
+    marginBottom: space.xs,
+  },
   floating: {
     position: 'absolute',
     right: space.lg,
@@ -639,7 +761,8 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   fabIcon: { fontSize: 30, lineHeight: 34, fontWeight: font.weight.regular },
-  scrollContent: { paddingHorizontal: space.lg, paddingBottom: space.xxxl },
+  // Clears the floating tab bar (52 + padding + inset) with room to spare.
+  scrollContent: { paddingHorizontal: space.lg, paddingBottom: 112 },
   column: {
     width: '100%',
     maxWidth: MAX_CONTENT_WIDTH,
@@ -776,6 +899,10 @@ const cardTone = (c: Palette): Record<string, ViewStyle> => ({
   warning: { backgroundColor: c.warningSoft, borderColor: c.warning },
   danger: { backgroundColor: c.dangerSoft, borderColor: c.danger },
   success: { backgroundColor: c.successSoft, borderColor: c.success },
+  // Waiting on someone. Violet, not pink: in this palette pink is absent,
+  // overdue and deadline, and a request that is simply pending is none of
+  // those.
+  pending: { backgroundColor: c.pendingSoft, borderColor: c.pending },
 })
 
 const buttonVariant = (c: Palette): Record<string, ViewStyle> => ({

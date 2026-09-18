@@ -15,7 +15,7 @@
  * Manager mode swaps the tab set in place rather than opening a second app.
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Animated, Easing, Platform, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter, usePathname } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -136,28 +136,40 @@ export function TabBar() {
     }).start()
   }, [activeIndex, slide])
 
+  // Measured rather than assumed. The old bar interpolated against
+  // MAX_CONTENT_WIDTH, which is only the real width on a wide screen; on a
+  // phone the pill would have slid to the wrong place.
+  const [width, setWidth] = useState(0)
+  const slot = width > 0 ? (width - PILL_PAD * 2) / tabs.length : 0
+  const pillColour = managerMode && canManage ? colour.accent : colour.primary
+
   return (
     <View
       style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, space.md) }]}
       accessibilityRole="tablist"
+      pointerEvents="box-none"
     >
-      <View style={styles.inner}>
-        <Animated.View
-          style={[
-            styles.indicator,
-            {
-              width: `${100 / tabs.length}%`,
-              transform: [
-                {
-                  translateX: slide.interpolate({
-                    inputRange: tabs.map((_, i) => i),
-                    outputRange: tabs.map((_, i) => i * (MAX_CONTENT_WIDTH / tabs.length)),
-                  }),
-                },
-              ],
-            },
-          ]}
-        />
+      <View style={styles.inner} onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
+        {slot > 0 ? (
+          <Animated.View
+            pointerEvents="none"
+            style={[
+              styles.pill,
+              {
+                width: slot,
+                backgroundColor: pillColour,
+                transform: [
+                  {
+                    translateX: slide.interpolate({
+                      inputRange: tabs.map((_, i) => i),
+                      outputRange: tabs.map((_, i) => PILL_PAD + i * slot),
+                    }),
+                  },
+                ],
+              },
+            ]}
+          />
+        ) : null}
 
         {tabs.map((tab) => {
           const active = tab.match(pathname)
@@ -219,11 +231,13 @@ function TabButton({
         }}
       >
         <View>
+          {/* Icon only. The label is the accessible name; on screen the filled
+              pill says which tab is active more clearly than a caption did. */}
           <Icon
             name={tab.icon}
-            size={23}
-            color={active ? colour.primary : colour.textFaint}
-            accent={active ? colour.accent : colour.textFaint}
+            size={24}
+            color={active ? colour.textInverse : colour.textMuted}
+            accent={active ? colour.textInverse : colour.textMuted}
           />
           {badge > 0 ? (
             <View style={styles.badge}>
@@ -231,25 +245,25 @@ function TabButton({
             </View>
           ) : null}
         </View>
-        <Text
-          style={[styles.label, active && styles.labelActive]}
-          numberOfLines={1}
-          allowFontScaling={false}
-        >
-          {tab.label}
-        </Text>
       </Animated.View>
     </Pressable>
   )
 }
 
+/** Inset between the pill container's edge and the sliding pill. */
+const PILL_PAD = 6
+
 const styles = StyleSheet.create({
+  // Floats over the content rather than sitting under it. The screen adds
+  // bottom padding so the last row is never hidden beneath.
   wrap: {
-    borderTopWidth: 1,
-    borderTopColor: colour.border,
-    backgroundColor: colour.surface,
-    paddingTop: space.md,
-    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(12px)' } : {}),
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingTop: space.sm,
+    paddingHorizontal: space.lg,
+    backgroundColor: 'transparent',
   },
   inner: {
     flexDirection: 'row',
@@ -257,38 +271,33 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MAX_CONTENT_WIDTH,
     alignSelf: 'center',
+    backgroundColor: colour.surface,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colour.border,
+    padding: PILL_PAD,
+    ...(Platform.OS === 'web' ? { backdropFilter: 'blur(14px)' } : {}),
   },
-  indicator: {
+  pill: {
     position: 'absolute',
-    top: -space.md - 1,
-    height: 2,
-    backgroundColor: colour.primary,
-    borderBottomLeftRadius: radius.pill,
-    borderBottomRightRadius: radius.pill,
+    top: PILL_PAD,
+    bottom: PILL_PAD,
+    borderRadius: radius.pill,
   },
   tab: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    // 56pt of vertical room, well clear of the 44pt touch minimum.
-    minHeight: 56,
-    paddingVertical: space.xs,
+    minHeight: 52,
   },
-  label: {
-    fontSize: font.size.xs,
-    color: colour.textFaint,
-    fontFamily: font.family,
-    letterSpacing: font.tracking.snug,
-  },
-  labelActive: { color: colour.primary, fontWeight: font.weight.semibold },
   badge: {
     position: 'absolute',
-    top: -5,
-    right: -9,
-    minWidth: 17,
-    height: 17,
+    top: -6,
+    right: -10,
+    minWidth: 18,
+    height: 18,
     borderRadius: 9,
-    backgroundColor: colour.accent,
+    backgroundColor: colour.danger,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,

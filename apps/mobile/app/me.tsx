@@ -32,6 +32,7 @@ import {
   ErrorNotice,
   Screen,
   Skeleton,
+  SheetPage,
 } from '../src/ui/components'
 import { Avatar, Chip, Label } from '../src/ui/primitives'
 import { colour, font, radius, space } from '../src/ui/theme'
@@ -78,7 +79,8 @@ export default function Me() {
   ) ?? []
 
   return (
-    <Screen
+    <SheetPage
+      title="Me"
       refreshControl={
         <RefreshControl
           refreshing={documents.isRefetching || me.isRefetching}
@@ -260,7 +262,7 @@ export default function Me() {
           />
         </Card>
       </Appear>
-    </Screen>
+    </SheetPage>
   )
 }
 

@@ -11,17 +11,17 @@
  * spinner (spec §5).
  */
 
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Appear,
+  SheetPage,
   Button,
   Card,
   Divider,
   EmptyState,
-  Screen,
   Skeleton,
 } from '../src/ui/components'
 import { Figure, Label, Stat, StatRow } from '../src/ui/primitives'
@@ -48,9 +48,15 @@ export default function Home() {
   const payslips = usePayslips()
   const deviceReview = useSession((s) => s.deviceReviewRequired)
 
-  if (me.data && useSession.getState().me?.employee.id !== me.data.employee.id) {
-    useSession.getState().setMe(me.data)
-  }
+  // Mirror the fetched profile into the session store. In an effect, not the
+  // render body: calling a store setter while rendering updates every other
+  // subscriber mid-render, which React flags as "Cannot update a component
+  // (BiometricGate) while rendering a different component (Home)".
+  useEffect(() => {
+    if (me.data && useSession.getState().me?.employee.id !== me.data.employee.id) {
+      useSession.getState().setMe(me.data)
+    }
+  }, [me.data])
 
   const refreshing =
     me.isRefetching || status.isRefetching || balances.isRefetching || requests.isRefetching
@@ -79,7 +85,9 @@ export default function Home() {
   const pendingDays = balances.data?.balances.reduce((sum, b) => sum + b.pending, 0) ?? 0
 
   return (
-    <Screen
+    <SheetPage
+      eyebrow={today}
+      title={greeting}
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -88,12 +96,6 @@ export default function Home() {
         />
       }
     >
-      <Appear index={0}>
-        <View style={styles.header}>
-          <Text style={styles.date}>{today}</Text>
-          <Text style={styles.greeting}>{greeting}</Text>
-        </View>
-      </Appear>
 
       {/* Leave and pay lead, per spec §3 "give before you take". */}
       <Appear index={1}>
@@ -161,10 +163,10 @@ export default function Home() {
         )}
       </Appear>
 
-      {/* Anything needing the employee's response, in accent pink. */}
+      {/* Waiting on a decision. Violet: pink is reserved for absent and overdue. */}
       {requests.data && requests.data.requests.length > 0 ? (
         <Appear index={4}>
-          <Card tone="danger" onPress={() => router.push('/leave')}>
+          <Card tone="pending" onPress={() => router.push('/leave')}>
             <View style={styles.actionRow}>
               <View style={styles.actionDot} />
               <View style={{ flex: 1, gap: 2 }}>
@@ -233,7 +235,7 @@ export default function Home() {
           )}
         </View>
       </Appear>
-    </Screen>
+    </SheetPage>
   )
 }
 
@@ -378,14 +380,6 @@ function formatMinutes(total: number): string {
 
 const styles = StyleSheet.create({
   header: { paddingTop: space.sm, gap: 2 },
-  date: { fontSize: font.size.md, color: colour.textMuted, fontFamily: font.family },
-  greeting: {
-    fontSize: font.size.xxl,
-    fontWeight: font.weight.bold,
-    color: colour.text,
-    letterSpacing: font.tracking.tight,
-    fontFamily: font.family,
-  },
 
   statSkeleton: { flex: 1, gap: space.sm },
 
