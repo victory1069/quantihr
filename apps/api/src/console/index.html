@@ -120,6 +120,7 @@
   tbody tr:hover { background: var(--surface-alt); }
   .table-wrap { overflow-x: auto; }
 
+  code.cred { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 15px; letter-spacing: 1px; background: var(--primary-soft); color: var(--primary); padding: 3px 8px; border-radius: 6px; user-select: all; }
   .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
   .pill.ok { background: var(--success-soft); color: var(--success); }
   .pill.warn { background: var(--warning-soft); color: var(--warning); }
@@ -161,13 +162,22 @@
      visually. */
   .signin-shell {
     position: fixed; inset: 0; display: flex; flex-direction: column;
-    align-items: center; justify-content: center; gap: 8px;
+    align-items: center; gap: 8px;
     overflow: auto; padding: 32px 20px;
   }
+  /* Centred via auto margins rather than justify-content: a centred flex
+     column clips whatever overflows the top, and on a short screen the form's
+     first field would be unreachable. Auto margins collapse to zero and let
+     the shell scroll instead. */
+  .signin-hero  { margin-top: auto; }
+  .signin-panel { margin-bottom: auto; }
+  #change-view .signin-panel { margin-top: auto; }  /* no hero above it */
   .signin-panel { order: 2; width: 100%; max-width: 440px; padding: 0; }
   .signin-hero  { order: 1; width: 100%; max-width: 640px; text-align: center; padding: 0 0 24px; align-items: center; }
 
-  .signin-bg { position: absolute; inset: 0; z-index: 0; }
+  /* `fixed` and `overflow:hidden` so the drifting gradient, which scales past
+     its box, never becomes scrollable space in the shell around it. */
+  .signin-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; }
   .signin-bg::after {
     /* Scrim. Without it the card and the headline fight the motion behind. */
     content: ''; position: absolute; inset: 0;
@@ -199,7 +209,6 @@
   .signin-panel {
     position: relative; z-index: 1;
     display: flex; align-items: center; justify-content: center;
-    padding: 32px; overflow-y: auto;
   }
   .signin-card {
     width: 100%; max-width: 440px; margin: 0 auto;
@@ -221,14 +230,14 @@
   .signin-hero {
     position: relative; z-index: 1;
     display: flex; flex-direction: column; justify-content: center;
-    padding: 48px 64px; color: #fff;
+    padding: 24px 32px 16px; color: #fff;
   }
   .signin-hero h2 {
     margin: 0; font-size: clamp(32px, 4.2vw, 54px); line-height: 1.06;
-    letter-spacing: -.035em; font-weight: 700; max-width: 16ch;
+    letter-spacing: -.035em; font-weight: 700;
   }
   .signin-hero h2 em {
-    font-style: normal;
+    display: block; font-style: normal;
     background: linear-gradient(92deg, #9C8BFF 0%, #FF9B7F 100%);
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }
@@ -250,6 +259,15 @@
   @media (max-width: 600px) {
     .signin-hero ul { display: none; }
     .signin-hero h2 { font-size: 30px; }
+  }
+  /* A laptop with the browser chrome open is ~750px tall. The form is what
+     the page is for; the welcome copy gives way first. */
+  @media (max-height: 860px) {
+    .signin-hero ul { display: none; }
+    .signin-hero { padding: 16px 24px 8px; }
+    .signin-hero h2 { font-size: clamp(28px, 3.4vw, 40px); }
+    .signin-hero p { margin-top: 10px; font-size: 15px; }
+    .signin-card { padding: 24px 28px; }
   }
 
   /* -------------------------------------------------------------------------
@@ -478,12 +496,17 @@
         <span>Quanti HR</span>
       </div>
       <h1>Sign in</h1>
-      <p class="hint">We send a one-time link — there are no passwords.</p>
-      <label for="email">Work email</label>
-      <input id="email" type="email" placeholder="you@company.com" autocomplete="email" />
-      <div class="actions">
-        <button class="btn" id="send-link">Email me a link</button>
-      </div>
+      <p class="hint">Use your password, or we can email you a one-time link.</p>
+      <form id="signin-form" novalidate>
+        <label for="email">Work email</label>
+        <input id="email" type="email" placeholder="you@company.com" autocomplete="username" />
+        <label for="password" style="margin-top:10px">Password</label>
+        <input id="password" type="password" placeholder="Your password or temporary password" autocomplete="current-password" />
+        <div class="actions">
+          <button class="btn" id="sign-in" type="submit">Sign in</button>
+          <button class="btn ghost" id="send-link" type="button">Email me a link instead</button>
+        </div>
+      </form>
       <div id="signin-msg"></div>
     </div>
   </div>
@@ -505,6 +528,31 @@
 </div>
 
 <!-- App -->
+<div id="change-view" class="signin-shell hidden">
+  <div class="signin-bg"><div class="signin-gradient"></div></div>
+  <div class="signin-panel">
+    <div class="signin-card">
+      <div class="signin-mark">
+        <span class="dot"></span><span class="dot accent"></span>
+        <span>Quanti HR</span>
+      </div>
+      <h1>Choose your password</h1>
+      <p class="hint">The one you signed in with was temporary. Pick your own before you go on — at least 10 characters; a short sentence works well.</p>
+      <form id="change-form" novalidate>
+        <label for="new-password">New password</label>
+        <input id="new-password" type="password" autocomplete="new-password" />
+        <label for="new-password-2" style="margin-top:10px">Type it again</label>
+        <input id="new-password-2" type="password" autocomplete="new-password" />
+        <div class="actions">
+          <button class="btn" id="change-submit" type="submit">Save and continue</button>
+          <button class="btn ghost" id="change-signout" type="button">Sign out</button>
+        </div>
+      </form>
+      <div id="change-msg"></div>
+    </div>
+  </div>
+</div>
+
 <div id="app-view" class="hidden">
   <div class="shell">
     <aside class="sidebar">
@@ -583,10 +631,30 @@ function notice(kind, message) { return `<div class="notice ${kind}">${esc(messa
 
 // --- Sign in ---------------------------------------------------------------
 
+$('#signin-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const email = $('#email').value.trim()
+  const password = $('#password').value
+  const box = $('#signin-msg')
+  if (!email || !password) { box.innerHTML = notice('bad', 'Enter your email and password, or ask for a link.'); return }
+  box.innerHTML = ''
+  $('#sign-in').disabled = true
+  try {
+    const s = await req('/v1/auth/password', {
+      method: 'POST',
+      body: { email, password, deviceId: deviceId(), deviceName: 'HR Console', platform: 'web' },
+    })
+    store.access = s.accessToken; store.refresh = s.refreshToken
+    $('#password').value = ''
+    await boot()
+  } catch (err) { box.innerHTML = notice('bad', err.message) }
+  finally { $('#sign-in').disabled = false }
+})
+
 $('#send-link').addEventListener('click', async () => {
   const email = $('#email').value.trim()
   const box = $('#signin-msg')
-  if (!email) return
+  if (!email) { box.innerHTML = notice('bad', 'Enter your work email first.'); return }
   box.innerHTML = ''
   try {
     const r = await req('/v1/auth/magic-link', { method: 'POST', body: { email } })
@@ -620,6 +688,33 @@ function deviceId() {
 $('#sign-out').addEventListener('click', () => {
   store.access = null; store.refresh = null; location.reload()
 })
+$('#change-signout').addEventListener('click', () => {
+  store.access = null; store.refresh = null; location.reload()
+})
+
+// Used by the forced-change gate and by Settings. `currentPassword` is
+// omitted while the account is still on its temporary password — the
+// server does not ask for what the person was only ever handed once.
+async function changePassword({ currentPassword, newPassword, again }) {
+  if (newPassword !== again) throw new Error('Those two do not match.')
+  await req('/v1/auth/password/change', {
+    method: 'POST',
+    body: { ...(currentPassword ? { currentPassword } : {}), newPassword },
+  })
+}
+
+$('#change-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const box = $('#change-msg')
+  box.innerHTML = ''
+  $('#change-submit').disabled = true
+  try {
+    await changePassword({ newPassword: $('#new-password').value, again: $('#new-password-2').value })
+    $('#new-password').value = ''; $('#new-password-2').value = ''
+    await boot()
+  } catch (err) { box.innerHTML = notice('bad', formatError(err)) }
+  finally { $('#change-submit').disabled = false }
+})
 
 // --- Shell -----------------------------------------------------------------
 
@@ -651,7 +746,7 @@ async function boot() {
   if (token) { history.replaceState({}, '', location.pathname); return verify(token) }
 
   if (!store.access && store.refresh) await refreshSession()
-  if (!store.access) { $('#signin-view').classList.remove('hidden'); $('#app-view').classList.add('hidden'); return }
+  if (!store.access) { $('#signin-view').classList.remove('hidden'); $('#app-view').classList.add('hidden'); $('#change-view').classList.add('hidden'); return }
 
   try {
     state.me = await req('/v1/me')
@@ -666,6 +761,16 @@ async function boot() {
   }
 
   $('#signin-view').classList.add('hidden')
+
+  // A temporary password opens exactly one screen. Nothing of the org is
+  // fetched or shown until it has been replaced.
+  if (state.me.user?.mustChangePassword) {
+    $('#app-view').classList.add('hidden')
+    $('#change-view').classList.remove('hidden')
+    $('#new-password').focus()
+    return
+  }
+  $('#change-view').classList.add('hidden')
   $('#app-view').classList.remove('hidden')
   $('#org-name').textContent = state.me.config.org.name
 
@@ -765,6 +870,45 @@ function openModal({ title, body, confirmLabel, onConfirm }) {
   document.body.appendChild(scrim)
   scrim.querySelector('input, select, textarea')?.focus()
   return { close, scrim }
+}
+
+/**
+ * Temporary passwords are shown once, here, and never again — they are
+ * hashed the moment they are issued. HR copies them out or hands them over
+ * on paper; the reset button on the employee row is the recovery path.
+ */
+function showCredentials(list) {
+  const rows = list.map((c) => ({
+    number: c.employeeNumber ?? '',
+    name: [c.firstName, c.lastName].filter(Boolean).join(' '),
+    email: c.email ?? '',
+    password: c.temporaryPassword,
+  }))
+  const body = el(`<div>
+    <p class="hint" style="margin-top:0">
+      ${rows.length === 1 ? 'This is the only time it is shown.' : `${rows.length} accounts were created. This is the only time these are shown.`}
+      Each person is asked to choose their own password the first time they sign in.
+    </p>
+    <div class="table-wrap"><table>
+      <thead><tr><th>#</th><th>Name</th><th>Email</th><th>Temporary password</th></tr></thead>
+      <tbody>${rows.map((r) => `<tr>
+        <td>${esc(r.number)}</td><td>${esc(r.name)}</td><td>${esc(r.email)}</td>
+        <td><code class="cred">${esc(r.password)}</code></td>
+      </tr>`).join('')}</tbody>
+    </table></div>
+    <div id="cred-msg"></div>
+  </div>`)
+  const { scrim } = openModal({
+    title: rows.length === 1 ? 'Temporary password' : 'Temporary passwords',
+    body,
+    confirmLabel: 'Copy to clipboard',
+    onConfirm: async () => {
+      const text = rows.map((r) => `${r.email}\t${r.password}`).join('\n')
+      try { await navigator.clipboard.writeText(text); $('#cred-msg', body).innerHTML = notice('ok', 'Copied.') }
+      catch { $('#cred-msg', body).innerHTML = notice('warn', 'Your browser blocked the clipboard — select and copy from the table.') }
+    },
+  })
+  scrim.querySelector('[data-act="cancel"]').textContent = 'Done'
 }
 
 const VIEWS = {}
@@ -991,6 +1135,7 @@ VIEWS.setup = async () => {
         <p class="hint">
           ${n > 0 ? `${n} employee(s) are in already.` : 'Nobody but you is in yet.'}
           Bulk import takes a spreadsheet; the Employees page adds people one at a time.
+          Each new account comes with a temporary password, shown once for you to pass on.
         </p>
         <div class="actions">
           <button class="btn secondary" id="s-import">Open bulk import</button>
@@ -1312,7 +1457,7 @@ VIEWS.employees = async () => {
           <td>${esc(empName(e.managerId))}</td>
           <td>${esc(e.startDate)}</td>
           <td><span class="pill ${e.status === 'active' ? 'ok' : 'neutral'}">${esc(e.status)}</span></td>
-          <td><button class="btn ghost edit-emp" data-id="${e.id}">Update</button></td>
+          <td style="white-space:nowrap"><button class="btn ghost edit-emp" data-id="${e.id}">Update</button> <button class="btn ghost reset-pw" data-id="${e.id}" title="Issue a new temporary password">Reset password</button></td>
         </tr>`).join('')}</tbody>
       </table></div>
     </div>
@@ -1368,9 +1513,10 @@ VIEWS.employees = async () => {
           roles: roles.length ? roles : ['employee'],
         }
         try {
-          await req('/v1/admin/employees', { method: 'POST', body: payload })
+          const saved = await req('/v1/admin/employees', { method: 'POST', body: payload })
           close()
           await show('employees')
+          if (saved.temporaryPassword) showCredentials([saved])
         } catch (e) {
           $('#emp-msg', body).innerHTML = notice('bad', formatError(e))
         }
@@ -1379,6 +1525,18 @@ VIEWS.employees = async () => {
   }
 
   $('#add-emp', section).addEventListener('click', () => openEditor(null))
+  for (const b of section.querySelectorAll('.reset-pw')) {
+    b.addEventListener('click', async () => {
+      const emp = state.employees.find((e) => e.id === b.dataset.id)
+      if (!confirm(`Issue a new temporary password for ${emp.firstName} ${emp.lastName}? Their current password will stop working.`)) return
+      b.disabled = true
+      try {
+        const r = await req(`/v1/admin/employees/${emp.id}/reset-password`, { method: 'POST' })
+        showCredentials([{ ...emp, temporaryPassword: r.temporaryPassword }])
+      } catch (e) { alert(formatError(e)) }
+      finally { b.disabled = false }
+    })
+  }
   for (const b of section.querySelectorAll('.edit-emp')) {
     b.addEventListener('click', () =>
       openEditor(state.employees.find((e) => e.id === b.dataset.id)))
@@ -1488,7 +1646,9 @@ QH-102,Grace,Hopper,grace@kanjufoods.test,2026-02-01,Engineer</textarea>
   $('#commit', section).addEventListener('click', async () => {
     if (!lastRows) return
     try {
-      render(await req('/v1/admin/employees/import', { method: 'POST', body: { mode: 'commit', rows: lastRows } }))
+      const result = await req('/v1/admin/employees/import', { method: 'POST', body: { mode: 'commit', rows: lastRows } })
+      render(result)
+      if (result.credentials?.length) showCredentials(result.credentials)
     } catch (e) { $('#import-msg', section).innerHTML = notice('bad', formatError(e)) }
   })
 
@@ -2123,6 +2283,17 @@ VIEWS.settings = async () => {
       <p class="hint">Walk through company, leave, policies and staff again. Nothing is reset — it just reopens the guided steps.</p>
       <div class="actions"><button class="btn secondary" onclick="fetch(location.origin+'/v1/admin/onboarding/reopen',{method:'POST',headers:{authorization:'Bearer '+sessionStorage.getItem('qh.access')}}).then(()=>window.__show('setup'))">Reopen setup</button></div>
     </div>
+    <div class="card">
+      <h3>Your password</h3>
+      <p class="hint">At least 10 characters. Changing it does not sign out your phone.</p>
+      <div class="grid">
+        <div><label>Current password</label><input id="pw-current" type="password" autocomplete="current-password" /></div>
+        <div><label>New password</label><input id="pw-new" type="password" autocomplete="new-password" /></div>
+        <div><label>Type it again</label><input id="pw-again" type="password" autocomplete="new-password" /></div>
+      </div>
+      <div class="actions"><button class="btn secondary" id="pw-save">Change password</button></div>
+      <div id="pw-msg"></div>
+    </div>
     <p class="lede">Org-wide rules. The rounding rule especially — every org has an opinion and they all differ.</p>
     <div class="card">
       <div class="grid">
@@ -2145,6 +2316,20 @@ VIEWS.settings = async () => {
       <div id="settings-msg"></div>
     </div>
   </section>`)
+
+  $('#pw-save', section).addEventListener('click', async () => {
+    const msg = $('#pw-msg', section)
+    msg.innerHTML = ''
+    try {
+      await changePassword({
+        currentPassword: $('#pw-current', section).value,
+        newPassword: $('#pw-new', section).value,
+        again: $('#pw-again', section).value,
+      })
+      for (const id of ['#pw-current', '#pw-new', '#pw-again']) $(id, section).value = ''
+      msg.innerHTML = notice('ok', 'Password changed.')
+    } catch (e) { msg.innerHTML = notice('bad', formatError(e)) }
+  })
 
   $('#save-settings', section).addEventListener('click', async () => {
     const body = {
