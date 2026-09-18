@@ -5,11 +5,13 @@
     "version": "0.1.0",
     "orientation": "portrait",
     "scheme": "quantihr",
+    "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0F172A"
+      "backgroundColor": "#06111A"
     },
     "assetBundlePatterns": [
       "**/*"
@@ -25,7 +27,8 @@
     "android": {
       "package": "com.quanti.hr",
       "adaptiveIcon": {
-        "backgroundColor": "#0F172A"
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#06111A"
       },
       "permissions": [
         "ACCESS_FINE_LOCATION",
@@ -43,7 +46,8 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "single"
+      "output": "single",
+      "favicon": "./assets/favicon.png"
     },
     "plugins": [
       "expo-router",
