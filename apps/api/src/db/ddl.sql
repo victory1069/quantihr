@@ -9,8 +9,9 @@
 --      `app.org_id` session claim.
 --   2. The application connects as `quanti_app`, which is NOT a superuser and
 --      NOT the table owner. Both matter: superusers bypass RLS entirely, and
---      table owners bypass it unless FORCE is set. We set FORCE anyway as a
---      second line of defence.
+--      table owners bypass it unless FORCE is set. FORCE is deliberately not
+--      set — the owner is the identity of the pre-tenant lookups, and forcing
+--      the policy onto it blinds them. See the note at the RLS block.
 
 -- `gen_random_uuid()` is core since Postgres 13, so no pgcrypto extension is
 -- required. That also keeps this schema loadable under PGlite, which does not
@@ -783,6 +784,31 @@ alter table meeting_actions add column if not exists completed_at timestamptz;
 --
 -- `nullif(..., '')` makes an unset or blank claim compare as NULL, which makes
 -- the predicate NULL, which hides the row. Unset context fails closed.
+--
+-- **Why RLS is enabled but not FORCED.** FORCE makes the policy apply to the
+-- table owner as well. That sounds like a second line of defence, and the
+-- header of this file once described it that way — but it broke sign-in on
+-- the first real deployment, and the reasoning was wrong:
+--
+--   - The application never runs as the owner. Every request transaction does
+--     `set local role quanti_app`, a non-owner, and RLS applies to it in full
+--     whether or not FORCE is set. FORCE adds nothing to the app's isolation.
+--
+--   - The owner IS the identity of the SECURITY DEFINER lookups below —
+--     auth_lookup_user, auth_lookup_magic_link, auth_lookup_invite,
+--     list_org_ids. They run before any tenant claim exists; that is their
+--     whole purpose. Under FORCE, with no claim set, the policy hides every
+--     row from them: no user is ever found, no magic link ever verifies, and
+--     seedIfEmpty sees zero orgs on every boot.
+--
+--   - Locally this was invisible because PGlite's owner is a superuser, and
+--     superusers bypass RLS regardless of FORCE. On managed Postgres (Render,
+--     RDS, Supabase) the owner is an ordinary role and FORCE bites.
+--
+-- The narrow lookups are still narrow — each returns a handful of columns
+-- and is the only privileged path — and the app role is still fully
+-- constrained. What FORCE was defending against was the owner reading
+-- tenant data, and the owner is exactly the role that has to.
 
 do $$
 declare
@@ -803,7 +829,8 @@ declare
 begin
   foreach t in array tenant_tables loop
     execute format('alter table %I enable row level security', t);
-    execute format('alter table %I force row level security', t);
+    -- Deliberately NOT forced. See the note above the block.
+    execute format('alter table %I no force row level security', t);
     execute format('drop policy if exists org_isolation on %I', t);
     execute format(
       'create policy org_isolation on %I using (org_id = nullif(current_setting(''app.org_id'', true), '''')::uuid)
@@ -813,7 +840,7 @@ end $$;
 
 -- organisations is the tenancy root: an org row is visible only to itself.
 alter table organisations enable row level security;
-alter table organisations force row level security;
+alter table organisations no force row level security;
 drop policy if exists org_self on organisations;
 create policy org_self on organisations
   using (id = nullif(current_setting('app.org_id', true), '')::uuid)

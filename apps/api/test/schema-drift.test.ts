@@ -14,12 +14,19 @@ import { describe, expect, it } from 'vitest'
 import { PGlite } from '@electric-sql/pglite'
 import { execSync } from 'node:child_process'
 import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+const here = dirname(fileURLToPath(import.meta.url))
 
 describe('schema drift', () => {
   it('a database built from the pre-onboarding DDL catches up on the next boot', async () => {
     // ad3ba4e is the commit Render was first deployed from.
-    const old = execSync('git show ad3ba4e:apps/api/src/db/ddl.sql', { encoding: 'utf8' })
-    const current = readFileSync('src/db/ddl.sql', 'utf8')
+    const old = execSync('git show ad3ba4e:apps/api/src/db/ddl.sql', {
+      encoding: 'utf8',
+      cwd: here,
+    })
+    const current = readFileSync(join(here, '../src/db/ddl.sql'), 'utf8')
 
     const db = new PGlite()
     await db.exec(old)
