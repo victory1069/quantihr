@@ -307,7 +307,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colour.border,
-    backgroundColor: colour.surfaceAlt,
+    backgroundColor: colour.surfaceSunken,
     minHeight: 40,
   },
   chipActive: { borderColor: colour.primary, backgroundColor: colour.primarySoft },
