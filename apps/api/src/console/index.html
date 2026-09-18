@@ -34,8 +34,20 @@
     --mono: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
+  /*
+   * App shell, not a document. html/body are exactly the viewport and never
+   * scroll; the frame below is 100% of that, and only the content pane inside
+   * it scrolls. That is what keeps the nav at the top and the frame's bottom
+   * edge on screen at every size — on a short laptop the sidebar was being cut
+   * off and on a phone the whole page scrolled the nav away.
+   *
+   * 100dvh where supported: on a phone browser 100vh includes the space under
+   * the URL bar, which pushes the bottom of the frame off screen by exactly
+   * the bar's height. dvh tracks the bar; vh is the fallback.
+   */
+  html, body { height: 100%; margin: 0; overflow: hidden; }
   body {
-    margin: 0; background: var(--bg); color: var(--text);
+    background: var(--bg); color: var(--text);
     font: 15px/1.5 var(--sans);
   }
   a { color: var(--primary); }
@@ -60,7 +72,10 @@
   /* The old top-bar nav was a flex row. In a rail it has to stack, and the
      group headings between the buttons are flex children too, so the direction
      has to be set on the nav itself rather than left to the buttons. */
-  .sidebar nav { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .sidebar nav {
+    display: flex; flex-direction: column; gap: 2px; min-width: 0;
+    flex: 1; min-height: 0; overflow-y: auto;
+  }
   nav button {
     background: none; border: 0; padding: 16px 12px; cursor: pointer;
     font: inherit; font-size: 14px; color: var(--muted);
@@ -183,7 +198,7 @@
   .signin-panel {
     position: relative; z-index: 1;
     display: flex; align-items: center; justify-content: center;
-    padding: 32px;
+    padding: 32px; overflow-y: auto;
   }
   .signin-card {
     width: 100%; max-width: 380px;
@@ -241,14 +256,17 @@
    * Shell — sidebar
    * ---------------------------------------------------------------------- */
 
-  .shell { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; }
+  .shell {
+    display: grid; grid-template-columns: 248px minmax(0, 1fr);
+    height: 100vh; height: 100dvh;
+  }
 
   .sidebar {
     background: #17132E;
     border-right: 1px solid rgba(255,255,255,.07);
     padding: 22px 14px;
     display: flex; flex-direction: column; gap: 6px;
-    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    height: 100%; min-height: 0; overflow: hidden;
   }
   .sidebar .brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 2px; }
   .sidebar .brand strong { color: #fff; font-size: 16px; letter-spacing: -.01em; }
@@ -283,7 +301,7 @@
     background: var(--nav-accent, var(--primary)); opacity: .55;
   }
   .sidebar button.nav-item[aria-current="true"] .ico { opacity: 1; }
-  .sidebar .grow { flex: 1; }
+  .sidebar .grow { display: none; } /* nav's flex:1 does this now */
   .sidebar .signout {
     background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12);
     color: rgba(255,255,255,.82); border-radius: 10px; padding: 10px;
@@ -291,14 +309,19 @@
   }
   .sidebar .signout:hover { background: rgba(255,255,255,.12); }
 
-  .content { min-width: 0; }
+  .content { min-width: 0; height: 100%; overflow-y: auto; }
 
   @media (max-width: 860px) {
-    .shell { grid-template-columns: 1fr; }
+    .shell { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
     .sidebar {
-      position: static; height: auto; flex-direction: row; overflow-x: auto;
+      height: auto; flex-direction: row; overflow-x: auto; overflow-y: hidden;
       align-items: center; gap: 4px; padding: 10px;
     }
+    .sidebar nav { flex: 1; overflow-y: hidden; }
+    .sidebar .signout { white-space: nowrap; padding: 8px 12px; flex: none; }
+    main { padding: 16px; }
+    .wizard-foot { flex-direction: column; align-items: stretch; }
+    .page-head { flex-direction: column; align-items: flex-start; }
     .sidebar .brand, .sidebar .org, .sidebar .group, .sidebar .grow { display: none; }
     .sidebar nav { flex-direction: row; overflow-x: auto; }
     .sidebar button.nav-item { width: auto; white-space: nowrap; }
@@ -373,7 +396,13 @@
   .kind[aria-pressed="true"]::before { opacity: 1; }
   /* Setup wizard */
   .wizard-rail {
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 0 0 22px;
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0 0 22px;
+  }
+  /* Four across is only readable with room for a sentence per card. Below
+     that, two rows of two — and this sits after the base rule on purpose,
+     because an earlier override loses to it on source order. */
+  @media (max-width: 860px) {
+    .wizard-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
   .wstep {
     padding: 12px 14px; border-radius: var(--radius); border: 1px solid var(--border);
