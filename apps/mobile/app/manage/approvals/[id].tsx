@@ -17,7 +17,7 @@ import { useState } from 'react'
 import { StyleSheet, Text, TextInput, View } from 'react-native'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { ApiError } from '@quanti/shared'
-import { Button, Card, ErrorNotice, HeroSheet } from '../../../src/ui/components'
+import { BackLink, Button, Card, ErrorNotice, HeroSheet } from '../../../src/ui/components'
 import { Avatar, DataRow } from '../../../src/ui/primitives'
 import { colour, font, radius, space } from '../../../src/ui/theme'
 import { useApprovals, useDecideApproval } from '../../../src/api/queries'
@@ -36,9 +36,16 @@ export default function ApprovalDetail() {
   const waiting = approvals.data?.approvals.length ?? 0
   const title = waiting === 0 ? 'Nothing needs you' : `${waiting} need you`
 
+  const hero = (
+    <View>
+      <BackLink label="Queue" onPress={() => router.back()} />
+      <Text style={styles.heroTitle}>{title}</Text>
+    </View>
+  )
+
   if (!item) {
     return (
-      <HeroSheet hero={<Text style={styles.heroTitle}>{title}</Text>} dimmed>
+      <HeroSheet hero={hero} dimmed>
         <Text style={styles.name}>{approvals.data ? 'This request has been decided.' : 'Loading…'}</Text>
         <Button label="Back to the queue" variant="secondary" onPress={() => router.back()} />
       </HeroSheet>
@@ -79,7 +86,7 @@ export default function ApprovalDetail() {
   }
 
   return (
-    <HeroSheet hero={<Text style={styles.heroTitle}>{title}</Text>} dimmed maxSheet={0.92}>
+    <HeroSheet hero={hero} dimmed maxSheet={0.92}>
       <View style={styles.head}>
         <Avatar name={item.employeeName} size={56} colour={colour.primary} />
         <View style={{ flex: 1, gap: 2 }}>

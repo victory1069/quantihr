@@ -282,7 +282,6 @@ export function HeroSheet({
           { paddingTop: insets.top + space.xl },
           { opacity: dim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.32] }) },
         ]}
-        pointerEvents={dimmed ? 'none' : 'auto'}
       >
         {hero}
       </Animated.View>
@@ -322,6 +321,26 @@ export function HeroSheet({
         </ScrollView>
       </Animated.View>
     </KeyboardAvoidingView>
+  )
+}
+
+/**
+ * The way back from a sheet that owns the whole screen — sits in the hero,
+ * above the dimmed title, where the header's back would otherwise be.
+ */
+export function BackLink({ label, onPress }: { label: string; onPress: () => void }) {
+  const c = useColour()
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Back to ${label}`}
+      hitSlop={12}
+      style={styles.backLink}
+    >
+      <Text style={[styles.backChevron, { color: c.text }]}>‹</Text>
+      <Text style={[styles.backLabel, { color: c.textMuted }]}>{label}</Text>
+    </Pressable>
   )
 }
 
@@ -891,6 +910,16 @@ const styles = StyleSheet.create({
   /** HeroSheet: content-sized, bottom-anchored; the hero gets what is left. */
   sheetAnchored: { flexGrow: 0, flexShrink: 1, flexBasis: 'auto', marginTop: 'auto' },
   sheetScroll: { flexGrow: 0, flexShrink: 1, flexBasis: 'auto' },
+  backLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    alignSelf: 'flex-start',
+    paddingVertical: space.sm,
+    marginBottom: space.sm,
+  },
+  backChevron: { fontSize: 28, lineHeight: 28, fontFamily: font.family },
+  backLabel: { fontSize: font.size.md, fontWeight: font.weight.semibold, fontFamily: font.family },
   sheetWash: { position: 'absolute', left: 0, right: 0, top: 0, height: 320 },
   heroArea: {
     width: '100%',

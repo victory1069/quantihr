@@ -112,13 +112,20 @@ export default function RootLayout() {
   const onAuthRoute = root === 'sign-in' || root === 'auth' || root === 'onboarding'
   // Onboarding, unlock and recovery own the whole screen: a half-visible tab
   // bar behind a setup or lockout flow invites tapping past it.
+  // Decision sheets own the screen too: their buttons sit at the bottom,
+  // where a floating tab bar would cover them, and the way out is the back
+  // control in the sheet, not a tab.
+  const decisionSheet =
+    (root === 'manage' && segments[1] === 'approvals' && !!segments[2]) ||
+    (root === 'meetings' && segments[2] === 'review')
   const fullScreen =
     onAuthRoute ||
     root === 'welcome' ||
     root === 'onboarding' ||
     root === 'unlock' ||
     root === 'recover' ||
-    root === 'change-password'
+    root === 'change-password' ||
+    decisionSheet
 
   useEffect(() => {
     if (!bootstrapped) return

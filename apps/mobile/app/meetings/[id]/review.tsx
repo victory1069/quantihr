@@ -16,6 +16,7 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import {
   Appear,
+  BackLink,
   Badge,
   Button,
   Card,
@@ -149,7 +150,12 @@ export default function Review() {
 
   return (
     <HeroSheet
-      hero={<Text style={styles.heroTitle}>Team</Text>}
+      hero={
+        <View>
+          <BackLink label="Meeting" onPress={() => router.back()} />
+          <Text style={styles.heroTitle}>{data.title}</Text>
+        </View>
+      }
       dimmed
       tone="manager"
       maxSheet={0.92}
