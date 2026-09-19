@@ -240,6 +240,7 @@ export function HeroSheet({
   stepKey,
   children,
   maxSheet = 0.88,
+  tone = 'default',
 }: {
   hero?: ReactNode
   dimmed?: boolean
@@ -247,6 +248,8 @@ export function HeroSheet({
   children: ReactNode
   /** Fraction of the screen the sheet may take. */
   maxSheet?: number
+  /** `manager` washes the top of the sheet violet — the AI and manager colour. */
+  tone?: 'default' | 'manager'
 }) {
   const c = useColour()
   const insets = useSafeAreaInsets()
@@ -298,6 +301,9 @@ export function HeroSheet({
           },
         ]}
       >
+        {tone === 'manager' ? (
+          <View pointerEvents="none" style={[styles.sheetWash, { backgroundColor: c.accentSoft }]} />
+        ) : null}
         <View style={[styles.sheetHandle, { backgroundColor: c.borderStrong }]} />
         <ScrollView
           // Size to content, scroll only past the sheet's max height. Without
@@ -885,6 +891,7 @@ const styles = StyleSheet.create({
   /** HeroSheet: content-sized, bottom-anchored; the hero gets what is left. */
   sheetAnchored: { flexGrow: 0, flexShrink: 1, flexBasis: 'auto', marginTop: 'auto' },
   sheetScroll: { flexGrow: 0, flexShrink: 1, flexBasis: 'auto' },
+  sheetWash: { position: 'absolute', left: 0, right: 0, top: 0, height: 320 },
   heroArea: {
     width: '100%',
     maxWidth: MAX_CONTENT_WIDTH,
