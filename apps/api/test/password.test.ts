@@ -304,3 +304,69 @@ describe('the forced change', () => {
     expect(me.json().user.mustChangePassword).toBe(false)
   })
 })
+
+describe('changing an employee email', () => {
+  it('moves the existing login rather than creating a second account', async () => {
+    const created = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/employees',
+      headers: bearer(hrToken),
+      payload: {
+        employeeNumber: 'QH-950',
+        firstName: 'Tunde',
+        lastName: 'Bello',
+        email: 'tunde@acme.test',
+        startDate: '2026-09-01',
+        employmentType: 'full_time',
+        status: 'active',
+        roles: ['employee'],
+      },
+    })
+    const temp = created.json().temporaryPassword as string
+    const before = await db.lookup.userByEmail('tunde@acme.test')
+
+    const moved = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/employees',
+      headers: bearer(hrToken),
+      payload: {
+        employeeNumber: 'QH-950',
+        firstName: 'Tunde',
+        lastName: 'Bello',
+        email: 'tunde.bello@gmail.test',
+        startDate: '2026-09-01',
+        employmentType: 'full_time',
+        status: 'active',
+        roles: ['employee'],
+      },
+    })
+    expect(moved.statusCode).toBe(201)
+    // No new credential: the account moved with the address.
+    expect(moved.json().temporaryPassword).toBeNull()
+    const after = await db.lookup.userByEmail('tunde.bello@gmail.test')
+    expect(after?.userId).toBe(before?.userId)
+    expect(await db.lookup.userByEmail('tunde@acme.test')).toBeNull()
+    // And the original temporary password still opens the moved account.
+    const back = await signIn('tunde.bello@gmail.test', temp, 'tunde-phone-1')
+    expect(back.statusCode, back.body).toBe(200)
+  })
+
+  it('refuses an address that belongs to someone else', async () => {
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/employees',
+      headers: bearer(hrToken),
+      payload: {
+        employeeNumber: 'QH-950',
+        firstName: 'Tunde',
+        lastName: 'Bello',
+        email: 'staff@acme.test',
+        startDate: '2026-09-01',
+        employmentType: 'full_time',
+        status: 'active',
+        roles: ['employee'],
+      },
+    })
+    expect(res.statusCode).toBe(409)
+  })
+})

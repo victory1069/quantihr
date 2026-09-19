@@ -861,16 +861,40 @@ async function upsertEmployee(
   actorUserId: string,
 ) {
   // Every employee needs a user row to sign in with; email is the link.
-  const [existingUser] = await tx
-    .select()
+  //
+  // An existing employee keeps their user row even when the email changes —
+  // the address on the user row is updated to follow. Looking the user up by
+  // the new address instead used to mint a second account with a fresh
+  // temporary password and leave the old login orphaned.
+  const [existingEmployee] = await tx
+    .select({ userId: employees.userId })
+    .from(employees)
+    .where(and(eq(employees.orgId, orgId), eq(employees.employeeNumber, body.employeeNumber)))
+    .limit(1)
+
+  const [userAtAddress] = await tx
+    .select({ id: users.id })
     .from(users)
     .where(eq(users.email, body.email))
     .limit(1)
 
-  let userId = existingUser?.id
+  let userId = existingEmployee?.userId ?? userAtAddress?.id
   // Only a brand-new account gets a temporary password. Updating an existing
   // employee must never rotate their credential underneath them.
   let temporaryPassword: string | null = null
+  if (existingEmployee?.userId) {
+    if (userAtAddress && userAtAddress.id !== existingEmployee.userId) {
+      throw new ApiError(
+        ERROR_CODES.VALIDATION_FAILED,
+        'That email already belongs to another account',
+        409,
+      )
+    }
+    await tx
+      .update(users)
+      .set({ email: body.email })
+      .where(eq(users.id, existingEmployee.userId))
+  }
   if (!userId) {
     temporaryPassword = generateTemporaryPassword()
     const [created] = await tx
