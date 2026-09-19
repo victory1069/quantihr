@@ -368,7 +368,16 @@ export function Fab({
       <View
         style={[styles.fab, { backgroundColor: c.primary }, shadow(scheme).lifted]}
       >
-        <Text style={[styles.fabIcon, { color: c.primaryText }]}>{icon}</Text>
+        {icon === '+' ? (
+          // Two bars, not a glyph: a "+" character sits low in its line box
+          // and lands differently on every font, so it never looked centred.
+          <View style={styles.plus}>
+            <View style={[styles.plusBar, { backgroundColor: c.primaryText }]} />
+            <View style={[styles.plusBar, styles.plusBarVertical, { backgroundColor: c.primaryText }]} />
+          </View>
+        ) : (
+          <Text style={[styles.fabIcon, { color: c.primaryText }]}>{icon}</Text>
+        )}
       </View>
     </Press>
   )
@@ -953,6 +962,9 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   fabIcon: { fontSize: 30, lineHeight: 30, fontWeight: font.weight.regular },
+  plus: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
+  plusBar: { position: 'absolute', width: 20, height: 2.5, borderRadius: 1.25 },
+  plusBarVertical: { width: 2.5, height: 20 },
   // Clears the floating tab bar (52 + padding + inset) with room to spare.
   scrollContent: { paddingHorizontal: space.lg, paddingBottom: 112 },
   column: {
