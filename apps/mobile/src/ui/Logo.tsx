@@ -30,45 +30,63 @@ export interface LogoProps {
   dotColour?: string
   /** Tail colour. */
   barColour?: string
-  /** What shows through the notch. Match the surface the mark sits on. */
+  /**
+   * Unused since the notch became a true cut-out; kept so call sites that
+   * matched it to their surface keep compiling. The mark now sits on anything.
+   */
   ground?: string
   style?: ViewStyle
+}
+
+/**
+ * The ring, drawn twice inside two clipping boxes that together cover the
+ * whole mark except the notch. A painted notch only ever matched one
+ * background; a clipped one is transparent over a photo, a gradient or the
+ * drifting colour on sign-in.
+ */
+function Ring({ k, colourValue }: { k: number; colourValue: string }) {
+  const full = VIEWBOX * k
+  const nx = NOTCH.x * k
+  const ny = NOTCH.y * k
+  const ring = (dx: number, dy: number) => (
+    <View
+      style={{
+        position: 'absolute',
+        left: RING.left * k - dx,
+        top: RING.top * k - dy,
+        width: RING.size * k,
+        height: RING.size * k,
+        borderRadius: RING.radius * k,
+        borderWidth: RING.stroke * k,
+        borderColor: colourValue,
+      }}
+    />
+  )
+  return (
+    <>
+      {/* Everything above the notch. */}
+      <View style={{ position: 'absolute', left: 0, top: 0, width: full, height: ny, overflow: 'hidden' }}>
+        {ring(0, 0)}
+      </View>
+      {/* Everything left of the notch, below that line. */}
+      <View style={{ position: 'absolute', left: 0, top: ny, width: nx, height: full - ny, overflow: 'hidden' }}>
+        {ring(0, ny)}
+      </View>
+    </>
+  )
 }
 
 export function LogoMark({
   size = 64,
   dotColour = colour.text,
   barColour = colour.primary,
-  ground = colour.bg,
   style,
 }: LogoProps) {
   const k = size / VIEWBOX
 
   return (
     <View style={[{ width: size, height: size }, style]}>
-      <View
-        style={{
-          position: 'absolute',
-          left: RING.left * k,
-          top: RING.top * k,
-          width: RING.size * k,
-          height: RING.size * k,
-          borderRadius: RING.radius * k,
-          borderWidth: RING.stroke * k,
-          borderColor: dotColour,
-        }}
-      />
-      {/* Notch: opens the bottom-right of the ring for the tail. */}
-      <View
-        style={{
-          position: 'absolute',
-          left: NOTCH.x * k,
-          top: NOTCH.y * k,
-          width: NOTCH.size * k,
-          height: NOTCH.size * k,
-          backgroundColor: ground,
-        }}
-      />
+      <Ring k={k} colourValue={dotColour} />
       <View
         style={{
           position: 'absolute',
@@ -105,7 +123,6 @@ export function LogoLoader({
   size = 96,
   dotColour = colour.text,
   barColour = colour.primary,
-  ground = colour.bg,
 }: LogoProps) {
   const breathe = useRef(new Animated.Value(0)).current
   const sweep = useRef(new Animated.Value(0)).current
@@ -160,7 +177,7 @@ export function LogoLoader({
         ],
       }}
     >
-      <LogoMark size={size} dotColour={dotColour} barColour={barColour} ground={ground} />
+      <LogoMark size={size} dotColour={dotColour} barColour={barColour} />
     </Animated.View>
   )
 }

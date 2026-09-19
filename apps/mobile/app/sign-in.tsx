@@ -31,6 +31,7 @@ import { getDeviceId, hasOnboarded, setTokens, useSession } from '../src/store/s
 import { Button, Card, ErrorNotice } from '../src/ui/components'
 import { Label } from '../src/ui/primitives'
 import { LogoMark } from '../src/ui/Logo'
+import { Aurora } from '../src/ui/Aurora'
 import { colour, font, MAX_CONTENT_WIDTH, radius, space } from '../src/ui/theme'
 
 interface MagicLinkResponse {
@@ -174,11 +175,12 @@ export default function SignIn() {
       style={styles.root}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      <Aurora />
       <Animated.View
         style={[
           styles.column,
           {
-            paddingTop: insets.top + space.xxxl,
+            paddingTop: insets.top + space.xl,
             paddingBottom: insets.bottom + space.xl,
             opacity: enter,
             transform: [
@@ -187,16 +189,10 @@ export default function SignIn() {
           },
         ]}
       >
-        {/* Brand */}
+        {/* Just the mark. The card says what the screen is for. */}
         <View style={styles.brand}>
-          <LogoMark size={44} />
-          <Text style={styles.wordmark}>Quanti</Text>
-          <Text style={styles.tagline}>
-            Your leave, your pay, your documents — in one place.
-          </Text>
+          <LogoMark size={64} />
         </View>
-
-        <View style={styles.spacer} />
 
         {door === 'link' && state === 'sent' ? (
           <Card>
@@ -272,14 +268,11 @@ export default function SignIn() {
             <Pressable onPress={() => switchDoor('link')} accessibilityRole="button" hitSlop={8}>
               <Text style={styles.switch}>Email me a sign-in link instead</Text>
             </Pressable>
+            <Text style={styles.footnote}>
+              New here? Use the temporary password HR gave you — you will choose your own next.
+            </Text>
           </Card>
         )}
-
-        <Text style={styles.footnote}>
-          {door === 'link'
-            ? 'Links last 15 minutes and work once.'
-            : 'New here? Use the temporary password HR gave you — you will choose your own next.'}
-        </Text>
       </Animated.View>
     </KeyboardAvoidingView>
   )
@@ -292,25 +285,12 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: MAX_CONTENT_WIDTH,
     alignSelf: 'center',
+    justifyContent: 'center',
     paddingHorizontal: space.lg,
-    gap: space.lg,
+    gap: space.xxl,
   },
-  spacer: { flex: 1 },
 
-  brand: { gap: space.md },
-  wordmark: {
-    fontSize: font.size.display,
-    fontWeight: font.weight.bold,
-    color: colour.text,
-    letterSpacing: font.tracking.tight,
-    fontFamily: font.family,
-  },
-  tagline: {
-    fontSize: font.size.lg,
-    color: colour.textMuted,
-    lineHeight: 23,
-    fontFamily: font.family,
-  },
+  brand: { alignItems: 'center' },
 
   input: {
     borderWidth: 1,
