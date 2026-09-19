@@ -396,7 +396,7 @@ const styles = StyleSheet.create({
     fontFamily: font.family,
     paddingTop: space.sm,
   },
-  body: { fontSize: font.size.md, color: colour.text, lineHeight: 22, fontFamily: font.family },
+  body: { fontSize: font.size.md, color: colour.text, lineHeight: 20, fontFamily: font.family },
 
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md },
   date: { width: 68 },
@@ -426,7 +426,7 @@ const styles = StyleSheet.create({
   rejection: {
     fontSize: font.size.sm,
     color: colour.danger,
-    lineHeight: 19,
+    lineHeight: 17,
     paddingBottom: space.sm,
     fontFamily: font.family,
   },
@@ -440,7 +440,7 @@ const styles = StyleSheet.create({
   footnote: {
     fontSize: font.size.sm,
     color: colour.textFaint,
-    lineHeight: 20,
+    lineHeight: 18,
     fontFamily: font.family,
   },
 })

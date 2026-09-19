@@ -17,9 +17,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Animated,
-  Easing,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
   StyleSheet,
@@ -28,12 +25,12 @@ import {
   View,
 } from 'react-native'
 import { useRouter } from 'expo-router'
-import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Button, Card, ErrorNotice } from '../src/ui/components'
-import { CheckRow, CodeInput, ConfirmField, ProgressRail, ResendTimer } from '../src/ui/onboarding'
+import { Button, Card, ErrorNotice, HeroSheet } from '../src/ui/components'
+import { CheckRow, CodeInput, ConfirmField, ResendTimer } from '../src/ui/onboarding'
 import { Figure, Label } from '../src/ui/primitives'
 import { Icon } from '../src/ui/Icon'
-import { colour, font, MAX_CONTENT_WIDTH, radius, space } from '../src/ui/theme'
+import { LogoMark } from '../src/ui/Logo'
+import { colour, font, radius, space } from '../src/ui/theme'
 import { API_BASE_URL } from '../src/api/client'
 import { useInvite } from '../src/api/invite'
 import { useBalances, useMe, usePayslips, useUpdateMe } from '../src/api/queries'
@@ -51,12 +48,12 @@ type Step =
   | 'permissions'
   | 'done'
 
-/** Steps that show the progress rail, in order. */
-const RAIL: Step[] = ['email', 'sent', 'phone', 'details']
+const ORDER: Step[] = ['email', 'sent', 'phone', 'details', 'biometrics', 'tour', 'permissions', 'done']
+
+const BIOMETRIC_NAME = Platform.select({ ios: 'Face ID', default: 'your fingerprint' })
 
 export default function Onboarding() {
   const router = useRouter()
-  const insets = useSafeAreaInsets()
   const [email, setEmail] = useState('')
   const invite = useInvite(email || undefined)
   const me = useMe()
@@ -77,15 +74,42 @@ export default function Onboarding() {
     if (me.data && (step === 'email' || step === 'sent')) setStep('details')
   }, [me.data, step])
 
-  const railIndex = RAIL.indexOf(step)
-
   const back = useCallback(() => {
     setError(null)
-    const order: Step[] = ['email', 'sent', 'phone', 'details', 'biometrics', 'tour', 'permissions']
-    const i = order.indexOf(step)
-    if (i > 0) setStep(order[i - 1]!)
+    const i = ORDER.indexOf(step)
+    if (i > 0) setStep(ORDER[i - 1]!)
     else router.back()
   }, [step, router])
+  void back
+
+  const orgName = invite.data?.orgName ?? 'Your employer'
+
+  // What sits above the sheet. The invite headline stays through the email
+  // steps so the person always knows whose app this is; it dims once the
+  // sheet is where the action is, and gives way to the Face ID pitch later.
+  const hero =
+    step === 'email' || step === 'sent' ? (
+      <View style={styles.hero}>
+        <LogoMark size={40} />
+        <Text style={styles.heroTitle}>{orgName} invited you</Text>
+        <Text style={styles.heroLede}>Your pay, leave and HR answers in one place.</Text>
+      </View>
+    ) : step === 'biometrics' ? (
+      <View style={styles.hero}>
+        <View style={styles.iconBadge}>
+          <Icon name="approvals" size={24} color={colour.primary} accent={colour.primary} />
+        </View>
+        <Text style={styles.heroTitle}>Unlock with {BIOMETRIC_NAME}</Text>
+        <Text style={styles.heroLede}>
+          You&apos;ll stay signed in. {Platform.OS === 'ios' ? 'Face ID' : 'It'} is asked again
+          whenever you open a payslip or a document.
+        </Text>
+      </View>
+    ) : step === 'details' ? null : (
+      <View style={styles.hero}>
+        <LogoMark size={40} />
+      </View>
+    )
 
   const finish = useCallback(async () => {
     await setOnboarded()
@@ -93,31 +117,17 @@ export default function Onboarding() {
   }, [router])
 
   return (
-    <KeyboardAvoidingView
-      style={styles.root}
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    <HeroSheet
+      hero={hero}
+      dimmed={step === 'sent' || step === 'phone'}
+      stepKey={step}
+      maxSheet={step === 'details' ? 0.92 : 0.8}
     >
-      <View
-        style={[
-          styles.column,
-          { paddingTop: insets.top + space.lg, paddingBottom: insets.bottom + space.lg },
-        ]}
-      >
-        {railIndex >= 0 ? (
-          <ProgressRail
-            total={RAIL.length}
-            index={railIndex}
-            failed={!!error && step === 'phone'}
-            onBack={back}
-          />
-        ) : null}
-
-        <StepFrame step={step}>
           {step === 'email' ? (
             <EmailStep
               email={email}
               locked={!!invite.data?.email}
-              orgName={invite.data?.orgName ?? 'your employer'}
+              orgName={orgName}
               busy={busy}
               error={error}
               onChange={setEmail}
@@ -203,40 +213,7 @@ export default function Onboarding() {
           ) : (
             <DoneStep flagged={flagged} onFinish={finish} />
           )}
-        </StepFrame>
-      </View>
-    </KeyboardAvoidingView>
-  )
-}
-
-/** Cross-fades between steps so the flow reads as one moving surface. */
-function StepFrame({ step, children }: { step: Step; children: React.ReactNode }) {
-  const enter = useRef(new Animated.Value(0)).current
-
-  useEffect(() => {
-    enter.setValue(0)
-    Animated.timing(enter, {
-      toValue: 1,
-      duration: 280,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
-    }).start()
-  }, [step, enter])
-
-  return (
-    <Animated.View
-      style={[
-        styles.frame,
-        {
-          opacity: enter,
-          transform: [
-            { translateX: enter.interpolate({ inputRange: [0, 1], outputRange: [20, 0] }) },
-          ],
-        },
-      ]}
-    >
-      {children}
-    </Animated.View>
+    </HeroSheet>
   )
 }
 
@@ -265,13 +242,8 @@ function EmailStep({
 
   return (
     <>
-      <Text style={styles.title}>Confirm your work email</Text>
-      <Text style={styles.lede}>
-        We&apos;ll send a one-time link. There&apos;s no password to create or remember.
-      </Text>
-
       <View style={{ gap: space.sm }}>
-        <Text style={styles.fieldLabel}>Work email</Text>
+        <Text style={styles.fieldLabel}>Your work email</Text>
         <View style={[styles.field, locked && styles.fieldLocked]}>
           <TextInput
             value={email}
@@ -289,26 +261,21 @@ function EmailStep({
           {valid ? <Text style={styles.tick}>✓</Text> : null}
         </View>
 
-        {locked ? (
-          <Text style={styles.hint}>
-            From your invite. Wrong address?{' '}
-            <Text style={styles.hintStrong}>Tell your HR admin</Text> — only they can change it.
-          </Text>
-        ) : null}
-      </View>
-
-      <Card>
-        <Label>Why we ask</Label>
-        <Text style={styles.cardBody}>
-          Your email is how {orgName} identifies you in payroll. It&apos;s also the only way to
-          recover access.
+        <Text style={styles.hint}>
+          {locked
+            ? 'From your HR record. Only an admin can change it.'
+            : 'The address on your HR record.'}
         </Text>
-      </Card>
+      </View>
 
       {error ? <ErrorNotice message={error} /> : null}
 
-      <View style={styles.spacer} />
-      <Button label="Send my link" onPress={onSubmit} loading={busy} disabled={!valid} />
+      <Button label="Send my sign-in link" onPress={onSubmit} loading={busy} disabled={!valid} />
+
+      <Text style={styles.footnote}>
+        {orgName} can see your leave, attendance and payroll data. It can&apos;t see your
+        location outside a check-in, or anything else on this phone.
+      </Text>
     </>
   )
 }
@@ -333,21 +300,16 @@ function SentStep({
   return (
     <>
       <View style={styles.iconBadge}>
-        <Icon name="documents" size={28} color={colour.primary} accent={colour.primary} />
+        <Icon name="documents" size={24} color={colour.primary} accent={colour.primary} />
       </View>
 
-      <Text style={styles.title}>Tap the link we emailed you</Text>
+      <Text style={styles.title}>Check your email</Text>
       <Text style={styles.lede}>
-        Sent to <Text style={styles.strong}>{email}</Text>. It expires in 15 minutes.
+        Tap the link we sent to <Text style={styles.strong}>{email}</Text>. It works for 15
+        minutes.
       </Text>
 
-      <Card>
-        <Label>Not arriving?</Label>
-        <Text style={styles.cardBody}>· Check spam and Promotions</Text>
-        <Text style={styles.cardBody}>· Corporate filters can hold it 2–3 minutes</Text>
-      </Card>
-
-      <ResendTimer seconds={60} label="Resend link" onResend={onResend} />
+      <ResendTimer seconds={60} label="Send again" onResend={onResend} />
 
       {/* Offered here rather than hidden behind a failure — corporate mail
           filtering is the largest single drop-off cause in this flow. */}
@@ -357,9 +319,9 @@ function SentStep({
         <Button label="Open the link (development)" variant="ghost" onPress={onOpenDevLink} />
       ) : null}
 
-      <View style={styles.spacer} />
       <Text style={styles.footnote}>
-        You can close the app — we&apos;ll pick up where you left off.
+        Wrong address? <Text style={styles.hintStrong}>Ask your HR admin</Text> — only they can
+        change it.
       </Text>
     </>
   )
@@ -472,20 +434,12 @@ function PhoneStep({
 
   return (
     <>
-      <Text style={styles.title}>
-        {failed ? 'That code didn’t match' : 'Verify your phone'}
-      </Text>
+      <Text style={styles.title}>{failed ? 'That code didn’t work' : 'Enter the code'}</Text>
       <Text style={styles.lede}>
         {failed
-          ? 'Check the most recent message — older codes stop working once a new one is sent.'
-          : 'Because this app shows your pay, we check a second factor once. After this, unlocking with your face or fingerprint is enough.'}
+          ? error
+          : `Sent to ${sentTo ?? 'the number on your HR record'} — the number on your HR record.`}
       </Text>
-
-      {!failed ? (
-        <Text style={styles.fieldLabel}>
-          Code sent to {sentTo ?? 'the number on your HR record'}
-        </Text>
-      ) : null}
 
       <CodeInput
         value={code}
@@ -526,14 +480,29 @@ function PhoneStep({
         <ErrorNotice tone="info" message={`Development: your code is ${devCode}`} />
       ) : null}
 
-      <View style={styles.spacer} />
+      {failed && !locked ? (
+        <Button
+          label="Send a new code"
+          loading={sending}
+          onPress={() => {
+            setCode('')
+            onError(null)
+            void request()
+          }}
+        />
+      ) : (
+        <Button
+          label={verifying ? 'Checking…' : 'Continue'}
+          loading={verifying || sending}
+          disabled={code.length < 6}
+          onPress={() => void verify(code)}
+        />
+      )}
       <Button
-        label={verifying ? 'Checking…' : 'Verify'}
-        loading={verifying || sending}
-        disabled={code.length < 6}
-        onPress={() => void verify(code)}
+        label={failed ? 'Email me a link instead' : 'Skip for now'}
+        variant="ghost"
+        onPress={onSkip}
       />
-      <Button label="Skip for now" variant="ghost" onPress={onSkip} />
     </>
   )
 }
@@ -602,9 +571,8 @@ function DetailsStep({
         </Card>
       ) : null}
 
-      <View style={styles.spacer} />
       <Button
-        label={flagged.length > 0 ? 'Send flags and continue' : 'Looks right, continue'}
+        label={flagged.length > 0 ? 'Send flags and continue' : 'Looks right'}
         onPress={onContinue}
       />
     </>
@@ -628,34 +596,28 @@ function BiometricsStep({
 
   return (
     <>
-      <View style={styles.iconBadge}>
-        <Icon name="approvals" size={28} color={colour.primary} accent={colour.primary} />
-      </View>
-
-      <Text style={styles.title}>Unlock with your face</Text>
-      <Text style={styles.lede}>
-        You stay signed in. It&apos;s asked again whenever you open a payslip or a document.
-      </Text>
-
       <View style={{ gap: space.sm }}>
         <CheckRow state="yes">No password to remember</CheckRow>
-        <CheckRow state="yes">Pay figures stay out of notifications</CheckRow>
+        <CheckRow state="yes">Pay figures never show in notifications</CheckRow>
         <CheckRow state="yes">Balances and payslips work offline</CheckRow>
-        {/* The line that actually moves adoption. Biometric anxiety is about
-            transmission, not capture. */}
-        <CheckRow state="yes">Your face never leaves this phone</CheckRow>
       </View>
 
-      <View style={styles.spacer} />
       <Button
-        label="Enable unlock"
+        label={BIOMETRIC_NAME === 'Face ID' ? 'Enable Face ID' : 'Enable unlock'}
         loading={busy}
         onPress={() => {
           update.mutate({ biometricEnabled: true })
           onEnable()
         }}
       />
-      <Button label="Sign in with a link each time" variant="ghost" onPress={onSkip} />
+      <Button label="Use a sign-in link each time" variant="ghost" onPress={onSkip} />
+
+      {/* The line that actually moves adoption. Biometric anxiety is about
+          transmission, not capture. */}
+      <Text style={styles.footnote}>
+        Your face never leaves this phone — Quanti only ever hears yes or no from{' '}
+        {Platform.OS === 'ios' ? 'iOS' : 'Android'}.
+      </Text>
     </>
   )
 }
@@ -905,37 +867,44 @@ function DoneStep({ flagged, onFinish }: { flagged: string[]; onFinish: () => vo
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colour.bg },
-  column: {
-    flex: 1,
-    width: '100%',
-    maxWidth: MAX_CONTENT_WIDTH,
-    alignSelf: 'center',
-    paddingHorizontal: space.lg,
-    gap: space.lg,
+  spacer: { minHeight: space.md },
+
+  hero: { gap: space.md, paddingBottom: space.xl },
+  heroTitle: {
+    fontSize: font.size.display,
+    fontWeight: font.weight.bold,
+    color: colour.text,
+    letterSpacing: font.tracking.tight,
+    lineHeight: 40,
+    fontFamily: font.family,
+    marginTop: space.md,
   },
-  frame: { flex: 1, gap: space.lg },
-  spacer: { flex: 1, minHeight: space.md },
+  heroLede: {
+    fontSize: font.size.lg,
+    color: colour.textMuted,
+    lineHeight: 24,
+    fontFamily: font.family,
+  },
 
   title: {
     fontSize: font.size.xxl,
     fontWeight: font.weight.bold,
     color: colour.text,
     letterSpacing: font.tracking.tight,
-    lineHeight: 38,
+    lineHeight: 34,
     fontFamily: font.family,
   },
   lede: {
     fontSize: font.size.md,
     color: colour.textMuted,
-    lineHeight: 24,
+    lineHeight: 22,
     fontFamily: font.family,
   },
   strong: { color: colour.text, fontWeight: font.weight.bold },
   footnote: {
     fontSize: font.size.sm,
     color: colour.textFaint,
-    lineHeight: 20,
+    lineHeight: 18,
     textAlign: 'center',
     fontFamily: font.family,
   },
@@ -954,7 +923,7 @@ const styles = StyleSheet.create({
     borderColor: colour.primary,
     borderRadius: radius.md,
     paddingHorizontal: space.lg,
-    minHeight: 58,
+    minHeight: 52,
     backgroundColor: colour.surfaceSunken,
   },
   fieldLocked: { borderColor: colour.primaryBorder },
@@ -968,7 +937,7 @@ const styles = StyleSheet.create({
   hint: {
     fontSize: font.size.sm,
     color: colour.textFaint,
-    lineHeight: 20,
+    lineHeight: 18,
     fontFamily: font.family,
   },
   hintStrong: { color: colour.primary, fontWeight: font.weight.bold },
@@ -976,19 +945,19 @@ const styles = StyleSheet.create({
   cardBody: {
     fontSize: font.size.md,
     color: colour.textMuted,
-    lineHeight: 22,
+    lineHeight: 20,
     fontFamily: font.family,
   },
   cardBodyStrong: {
     fontSize: font.size.md,
     color: colour.text,
-    lineHeight: 22,
+    lineHeight: 20,
     fontFamily: font.family,
   },
 
   iconBadge: {
     width: 58,
-    height: 58,
+    height: 52,
     borderRadius: radius.lg,
     backgroundColor: colour.primarySoft,
     borderWidth: 1,
@@ -1058,7 +1027,7 @@ const styles = StyleSheet.create({
   permNoteText: {
     fontSize: font.size.sm,
     color: colour.warning,
-    lineHeight: 20,
+    lineHeight: 18,
     fontFamily: font.family,
   },
 

@@ -288,7 +288,7 @@ const checkColour: Record<CheckState, string> = {
 
 const styles = StyleSheet.create({
   rail: { flexDirection: 'row', alignItems: 'center', gap: space.md },
-  backChevron: { fontSize: 30, color: colour.textMuted, lineHeight: 32, width: 18 },
+  backChevron: { fontSize: 30, color: colour.textMuted, lineHeight: 29, width: 18 },
   backSpacer: { width: 18 },
   railTrack: { flex: 1, flexDirection: 'row', gap: space.sm },
   railSegment: {
@@ -339,7 +339,7 @@ const styles = StyleSheet.create({
     borderColor: colour.border,
     borderRadius: radius.md,
     paddingHorizontal: space.lg,
-    minHeight: 56,
+    minHeight: 50,
     backgroundColor: colour.surface,
   },
   resendReady: { borderColor: colour.primaryBorder },
@@ -362,7 +362,7 @@ const styles = StyleSheet.create({
     backgroundColor: colour.surface,
     paddingHorizontal: space.lg,
     paddingVertical: space.md,
-    minHeight: 56,
+    minHeight: 50,
   },
   checkGlyph: { fontSize: 17, fontWeight: font.weight.bold, width: 18, textAlign: 'center' },
   checkText: {
@@ -370,7 +370,7 @@ const styles = StyleSheet.create({
     fontSize: font.size.md,
     color: colour.text,
     fontFamily: font.family,
-    lineHeight: 21,
+    lineHeight: 19,
   },
 
   confirm: {

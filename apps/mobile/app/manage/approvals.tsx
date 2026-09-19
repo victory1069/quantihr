@@ -318,11 +318,11 @@ const styles = StyleSheet.create({
   summaryRow: { flexDirection: 'row', gap: space.md, alignItems: 'center' },
   summaryMain: { flex: 1, gap: 2 },
   summaryEnd: { alignItems: 'flex-end', gap: space.xs },
-  chevron: { fontSize: 16, color: colour.textFaint, lineHeight: 18 },
+  chevron: { fontSize: 16, color: colour.textFaint, lineHeight: 16 },
   who: { fontSize: font.size.md, fontWeight: font.weight.semibold, color: colour.text },
   what: { fontSize: font.size.md, color: colour.text },
   when: { fontSize: font.size.sm, color: colour.textMuted },
-  reason: { fontSize: font.size.md, color: colour.textMuted, fontStyle: 'italic', lineHeight: 21 },
+  reason: { fontSize: font.size.md, color: colour.textMuted, fontStyle: 'italic', lineHeight: 19 },
 
   contextRow: { flexDirection: 'row', gap: space.xl },
   contextValue: { fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colour.text },

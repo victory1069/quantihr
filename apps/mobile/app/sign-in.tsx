@@ -189,7 +189,7 @@ export default function SignIn() {
       >
         {/* Brand */}
         <View style={styles.brand}>
-          <LogoMark size={56} />
+          <LogoMark size={44} />
           <Text style={styles.wordmark}>Quanti</Text>
           <Text style={styles.tagline}>
             Your leave, your pay, your documents — in one place.
@@ -308,7 +308,7 @@ const styles = StyleSheet.create({
   tagline: {
     fontSize: font.size.lg,
     color: colour.textMuted,
-    lineHeight: 26,
+    lineHeight: 23,
     fontFamily: font.family,
   },
 
@@ -317,7 +317,7 @@ const styles = StyleSheet.create({
     borderColor: colour.borderStrong,
     borderRadius: radius.md,
     paddingHorizontal: space.lg,
-    minHeight: 56,
+    minHeight: 50,
     fontSize: font.size.lg,
     color: colour.text,
     backgroundColor: colour.surfaceSunken,
@@ -342,7 +342,7 @@ const styles = StyleSheet.create({
   sentBody: {
     fontSize: font.size.md,
     color: colour.textMuted,
-    lineHeight: 23,
+    lineHeight: 21,
     fontFamily: font.family,
   },
 
@@ -350,7 +350,7 @@ const styles = StyleSheet.create({
     fontSize: font.size.sm,
     color: colour.textFaint,
     textAlign: 'center',
-    lineHeight: 20,
+    lineHeight: 18,
     fontFamily: font.family,
   },
 })

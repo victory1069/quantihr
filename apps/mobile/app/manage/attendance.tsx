@@ -211,10 +211,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 8,
-    backgroundColor: colour.surfaceAlt,
+    backgroundColor: colour.surfaceRaised,
   },
   navDisabled: { opacity: 0.4 },
-  navText: { fontSize: 22, color: colour.text, lineHeight: 26 },
+  navText: { fontSize: 22, color: colour.text, lineHeight: 23 },
   weekLabel: { fontSize: font.size.sm, fontWeight: font.weight.semibold, color: colour.text },
 
   personRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.md },
@@ -222,7 +222,7 @@ const styles = StyleSheet.create({
   personMeta: { fontSize: font.size.sm, color: colour.textMuted },
 
   drilldown: {
-    backgroundColor: colour.surfaceAlt,
+    backgroundColor: colour.surfaceRaised,
     borderRadius: 8,
     padding: space.md,
     gap: space.xs,

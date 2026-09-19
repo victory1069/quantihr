@@ -241,7 +241,7 @@ const styles = StyleSheet.create({
   identity: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   avatar: {
     width: 52,
-    height: 52,
+    height: 48,
     borderRadius: 26,
     backgroundColor: colour.primarySoft,
     alignItems: 'center',
@@ -262,9 +262,9 @@ const styles = StyleSheet.create({
     color: colour.text,
     backgroundColor: colour.surface,
   },
-  hint: { fontSize: font.size.sm, color: colour.textFaint, marginTop: space.sm, lineHeight: 19 },
+  hint: { fontSize: font.size.sm, color: colour.textFaint, marginTop: space.sm, lineHeight: 17 },
 
   prefRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.sm },
   prefLabel: { fontSize: font.size.md, color: colour.text, fontWeight: font.weight.medium },
-  prefDescription: { fontSize: font.size.sm, color: colour.textMuted, marginTop: 2, lineHeight: 18 },
+  prefDescription: { fontSize: font.size.sm, color: colour.textMuted, marginTop: 2, lineHeight: 16 },
 })

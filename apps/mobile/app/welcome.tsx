@@ -133,13 +133,13 @@ const styles = StyleSheet.create({
     fontWeight: font.weight.bold,
     color: colour.text,
     letterSpacing: font.tracking.tight,
-    lineHeight: 50,
+    lineHeight: 42,
     fontFamily: font.family,
   },
   lede: {
     fontSize: font.size.lg,
     color: colour.textMuted,
-    lineHeight: 27,
+    lineHeight: 24,
     fontFamily: font.family,
   },
 

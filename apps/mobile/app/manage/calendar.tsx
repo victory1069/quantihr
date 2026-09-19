@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.sm,
     backgroundColor: colour.surfaceSunken,
   },
-  navText: { fontSize: 22, color: colour.text, lineHeight: 26 },
+  navText: { fontSize: 22, color: colour.text, lineHeight: 23 },
   monthLabel: { fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colour.text },
 
   weekRow: { flexDirection: 'row' },

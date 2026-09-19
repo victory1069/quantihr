@@ -128,7 +128,7 @@ const styles = StyleSheet.create({
     fontSize: font.size.md,
     color: colour.text,
     fontWeight: font.weight.semibold,
-    lineHeight: 22,
+    lineHeight: 20,
     fontFamily: font.family,
   },
 
@@ -141,7 +141,7 @@ const styles = StyleSheet.create({
   quoteText: {
     fontSize: font.size.sm,
     color: colour.textMuted,
-    lineHeight: 21,
+    lineHeight: 19,
     fontStyle: 'italic',
     fontFamily: font.family,
   },

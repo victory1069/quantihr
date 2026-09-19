@@ -183,7 +183,7 @@ const styles = StyleSheet.create({
   meta: {
     fontSize: font.size.sm,
     color: colour.textMuted,
-    lineHeight: 21,
+    lineHeight: 19,
     fontFamily: font.family,
   },
 
@@ -196,7 +196,7 @@ const styles = StyleSheet.create({
   clipText: {
     fontSize: font.size.md,
     color: colour.text,
-    lineHeight: 22,
+    lineHeight: 20,
     fontStyle: 'italic',
     fontFamily: font.family,
   },

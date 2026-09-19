@@ -36,7 +36,7 @@ interface IconProps {
   accent?: string
 }
 
-export function Icon({ name, size = 24, color = colour.textMuted, accent }: IconProps) {
+export function Icon({ name, size = 22, color = colour.textMuted, accent }: IconProps) {
   const s = size / 24
   const stroke = Math.max(1.6, 2 * s)
   const tint = accent ?? color

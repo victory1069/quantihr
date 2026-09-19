@@ -219,7 +219,7 @@ const styles = StyleSheet.create({
   itemDetail: {
     fontSize: font.size.sm,
     color: colour.textMuted,
-    lineHeight: 19,
+    lineHeight: 17,
     fontFamily: font.family,
   },
   chevron: { fontSize: 22, color: colour.textFaint },

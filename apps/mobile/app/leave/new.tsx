@@ -294,7 +294,7 @@ const styles = StyleSheet.create({
   },
   label: { fontSize: font.size.sm, fontWeight: font.weight.semibold, color: colour.textMuted },
   fieldLabel: { fontSize: font.size.xs, color: colour.textMuted, marginBottom: 4 },
-  hint: { fontSize: font.size.sm, color: colour.textMuted, lineHeight: 19 },
+  hint: { fontSize: font.size.sm, color: colour.textMuted, lineHeight: 17 },
   errorText: { fontSize: font.size.sm, color: colour.danger },
 
   typeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: space.sm },
@@ -307,7 +307,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colour.border,
-    backgroundColor: colour.surfaceAlt,
+    backgroundColor: colour.surfaceRaised,
     minHeight: 40,
   },
   chipActive: { borderColor: colour.primary, backgroundColor: colour.primarySoft },

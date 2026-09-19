@@ -126,7 +126,7 @@ function monthLabel(iso: string): string {
 }
 
 const styles = StyleSheet.create({
-  locked: { fontSize: font.size.md, color: colour.textMuted, lineHeight: 21 },
+  locked: { fontSize: font.size.md, color: colour.textMuted, lineHeight: 19 },
   row: { flexDirection: 'row', alignItems: 'center', gap: space.md },
   period: { fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colour.text },
   dates: { fontSize: font.size.sm, color: colour.textMuted },

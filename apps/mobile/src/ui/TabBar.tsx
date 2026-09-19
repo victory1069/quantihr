@@ -235,7 +235,7 @@ function TabButton({
               pill says which tab is active more clearly than a caption did. */}
           <Icon
             name={tab.icon}
-            size={24}
+            size={22}
             color={active ? colour.textInverse : colour.textMuted}
             accent={active ? colour.textInverse : colour.textMuted}
           />
@@ -288,7 +288,7 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    minHeight: 52,
+    minHeight: 48,
   },
   badge: {
     position: 'absolute',

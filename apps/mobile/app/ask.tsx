@@ -203,13 +203,13 @@ const styles = StyleSheet.create({
   answerText: {
     fontSize: font.size.md,
     color: colour.text,
-    lineHeight: 23,
+    lineHeight: 21,
     fontFamily: font.family,
   },
   answerMuted: {
     fontSize: font.size.sm,
     color: colour.textMuted,
-    lineHeight: 21,
+    lineHeight: 19,
     fontFamily: font.family,
   },
 
@@ -230,7 +230,7 @@ const styles = StyleSheet.create({
   citationExcerpt: {
     fontSize: font.size.sm,
     color: colour.text,
-    lineHeight: 21,
+    lineHeight: 19,
     fontStyle: 'italic',
     fontFamily: font.family,
   },
@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
   intro: {
     fontSize: font.size.md,
     color: colour.textMuted,
-    lineHeight: 23,
+    lineHeight: 21,
     fontFamily: font.family,
   },
 
@@ -249,7 +249,7 @@ const styles = StyleSheet.create({
     borderColor: colour.borderStrong,
     borderRadius: radius.md,
     paddingHorizontal: space.lg,
-    minHeight: 52,
+    minHeight: 48,
     fontSize: font.size.md,
     color: colour.text,
     backgroundColor: colour.surface,

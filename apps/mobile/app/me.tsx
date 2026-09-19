@@ -99,7 +99,7 @@ export default function Me() {
             <View style={styles.identity}>
               <Avatar
                 name={`${me.data.employee.firstName} ${me.data.employee.lastName}`}
-                size={52}
+                size={44}
                 colour={colour.primary}
               />
               <View style={{ flex: 1, gap: 2 }}>
@@ -342,7 +342,7 @@ const styles = StyleSheet.create({
   signBody: {
     fontSize: font.size.sm,
     color: colour.textMuted,
-    lineHeight: 20,
+    lineHeight: 18,
     fontFamily: font.family,
   },
 
@@ -383,7 +383,7 @@ const styles = StyleSheet.create({
   hint: {
     fontSize: font.size.sm,
     color: colour.textFaint,
-    lineHeight: 20,
+    lineHeight: 18,
     fontFamily: font.family,
   },
 })

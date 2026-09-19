@@ -23,6 +23,7 @@ import { BiometricGate } from '../src/ui/BiometricGate'
 import { SyncBanner } from '../src/ui/SyncBanner'
 import { colour } from '../src/ui/theme'
 import { restoreSession, useSession } from '../src/store/session'
+import { useMe } from '../src/api/queries'
 import { drainOutbox } from '../src/api/sync'
 import { startSyncLoop } from '../src/api/sync-loop'
 
@@ -60,6 +61,22 @@ persistQueryClient({
   },
 })
 
+/**
+ * Keeps the session store's `me` in step with the profile query, for every
+ * screen, from the moment the session exists. Before this lived on Home, a
+ * screen opened directly — a deep link, a restart on a manager page — saw
+ * `me` as null and, for the role-gated ones, denied a manager their own team.
+ */
+function ProfileSync() {
+  const status = useSession((s) => s.status)
+  const setMe = useSession((s) => s.setMe)
+  const me = useMe({ enabled: status === 'authenticated' })
+  useEffect(() => {
+    if (me.data) setMe(me.data)
+  }, [me.data, setMe])
+  return null
+}
+
 export default function RootLayout() {
   const status = useSession((s) => s.status)
   const mustChangePassword = useSession((s) => s.mustChangePassword)
@@ -90,7 +107,9 @@ export default function RootLayout() {
    * half-visible shell behind a setup flow invites tapping past it.
    */
   const root = segments[0] as string | undefined
-  const onAuthRoute = root === 'sign-in' || root === 'auth'
+  // Onboarding starts signed out — the invite email, the link, the code all
+  // happen before a session exists — so it has to be reachable without one.
+  const onAuthRoute = root === 'sign-in' || root === 'auth' || root === 'onboarding'
   // Onboarding, unlock and recovery own the whole screen: a half-visible tab
   // bar behind a setup or lockout flow invites tapping past it.
   const fullScreen =
@@ -121,6 +140,7 @@ export default function RootLayout() {
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
+        <ProfileSync />
         <StatusBar style="light" />
         <View style={styles.root}>
           {status === 'authenticated' && !fullScreen ? <AppHeader /> : null}

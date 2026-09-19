@@ -34,10 +34,20 @@ import {
   useMe,
   usePayslips,
 } from '../src/api/queries'
-import { useSession } from '../src/store/session'
+import { isManager, useSession } from '../src/store/session'
+import { ManagerHome } from '../src/ui/ManagerHome'
 import { formatNairaCompact } from '../src/lib/money'
 
 export default function Home() {
+  const managerMode = useSession((s) => s.managerMode)
+  const sessionMe = useSession((s) => s.me)
+  // A manager opens the app for their queue; that is a different screen, not
+  // a variant of this one. Same route so the tab bar and deep links agree.
+  if (managerMode && isManager(sessionMe)) return <ManagerHome />
+  return <EmployeeHome />
+}
+
+function EmployeeHome() {
   const router = useRouter()
   const queryClient = useQueryClient()
 
@@ -87,7 +97,30 @@ export default function Home() {
   return (
     <SheetPage
       eyebrow={today}
-      title={greeting}
+      title={primary.title ?? greeting}
+      heroBody={
+        status.data ? (
+          primary.pill ? (
+            <View style={styles.pill}>
+              <View style={styles.pillDot} />
+              <Text style={styles.pillText}>{primary.pill}</Text>
+            </View>
+          ) : (
+            <>
+              <Label tone={primary.actionLabel ? 'primary' : 'faint'}>{primary.eyebrow}</Label>
+              <Text style={styles.checkinBody}>{primary.detail}</Text>
+              {primary.actionLabel ? (
+                <Button label={primary.actionLabel} onPress={() => router.push('/checkin')} />
+              ) : null}
+            </>
+          )
+        ) : (
+          <>
+            <Skeleton height={12} width={140} />
+            <Skeleton height={18} />
+          </>
+        )
+      }
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -143,25 +176,6 @@ export default function Home() {
           </Card>
         </Appear>
       ) : null}
-
-      {/* Check-in */}
-      <Appear index={3}>
-        {status.data ? (
-          <Card tone={primary.actionLabel ? 'primary' : 'default'}>
-            <Label tone={primary.actionLabel ? 'primary' : 'faint'}>{primary.eyebrow}</Label>
-            <Text style={styles.checkinBody}>{primary.detail}</Text>
-            {primary.actionLabel ? (
-              <Button label={primary.actionLabel} onPress={() => router.push('/checkin')} />
-            ) : null}
-          </Card>
-        ) : (
-          <Card>
-            <Skeleton height={14} width={160} />
-            <Skeleton height={20} />
-            <Skeleton height={52} />
-          </Card>
-        )}
-      </Appear>
 
       {/* Waiting on a decision. Violet: pink is reserved for absent and overdue. */}
       {requests.data && requests.data.requests.length > 0 ? (
@@ -304,8 +318,12 @@ function monthName(iso: string): string {
 }
 
 interface PrimaryAction {
+  /** Replaces the greeting when the day's state is the headline. */
+  title?: string
   eyebrow: string
   detail: string
+  /** A verified state, shown as a pill instead of eyebrow + detail. */
+  pill?: string
   actionLabel: string | null
 }
 
@@ -326,11 +344,15 @@ function usePrimaryAction(
         })
       : ''
     return {
+      title: `Checked in\nat ${at}`,
       eyebrow: `CHECKED IN · ${at}`,
       detail:
         record.minutesLate > 0
           ? `${record.minutesLate} minutes after your ${status.schedule.startTime} start.`
           : `On time against your ${status.schedule.startTime} start.`,
+      // Every accepted check-in passed both checks; that is what the pill
+      // attests, next to whether it was on time.
+      pill: `${record.minutesLate > 0 ? `${record.minutesLate} MIN LATE` : 'ON TIME'} · GEOFENCE + CODE`,
       actionLabel: null,
     }
   }
@@ -346,14 +368,14 @@ function usePrimaryAction(
   switch (status.window.reason) {
     case 'open':
       return {
-        eyebrow: `CHECK-IN OPEN · CLOSES ${status.window.closesAt}`,
-        detail: `${where} · tap to record today`,
+        eyebrow: `CHECK IN BY ${status.window.closesAt}`,
+        detail: status.location ? `You're near ${where}` : `${where} · tap to record today`,
         actionLabel: 'Check in',
       }
     case 'too_early':
       return {
         eyebrow: `CHECK-IN OPENS ${status.window.opensAt}`,
-        detail: `That is in ${formatMinutes(status.window.minutesUntilOpen)}.`,
+        detail: `That is in ${formatMinutes(status.window.minutesUntilOpen)} — we'll remind you.`,
         actionLabel: null,
       }
     case 'too_late':
@@ -364,6 +386,7 @@ function usePrimaryAction(
       }
     default:
       return {
+        title: 'Nothing needs\nyou today',
         eyebrow: 'NOT A WORKING DAY',
         detail: 'Check-in resumes on your next scheduled day.',
         actionLabel: null,
@@ -384,10 +407,27 @@ const styles = StyleSheet.create({
   statSkeleton: { flex: 1, gap: space.sm },
 
   checkinBody: {
-    fontSize: font.size.md,
-    color: colour.text,
-    lineHeight: 22,
+    fontSize: font.size.lg,
+    color: colour.textMuted,
+    lineHeight: 23,
     fontFamily: font.family,
+  },
+  pill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colour.successSoft,
+  },
+  pillDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colour.success },
+  pillText: {
+    fontSize: font.size.sm,
+    color: colour.success,
+    letterSpacing: font.tracking.label,
+    fontFamily: font.mono,
   },
 
   warnTitle: {
@@ -399,7 +439,7 @@ const styles = StyleSheet.create({
   warnBody: {
     fontSize: font.size.sm,
     color: colour.warning,
-    lineHeight: 20,
+    lineHeight: 18,
     fontFamily: font.family,
   },
 

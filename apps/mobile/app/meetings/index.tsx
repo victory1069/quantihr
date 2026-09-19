@@ -177,7 +177,7 @@ const styles = StyleSheet.create({
   waitingText: {
     fontSize: font.size.md,
     color: colour.text,
-    lineHeight: 22,
+    lineHeight: 20,
     fontFamily: font.family,
   },
 

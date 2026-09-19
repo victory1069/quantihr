@@ -263,14 +263,14 @@ const styles = StyleSheet.create({
   body: {
     fontSize: font.size.md,
     color: colour.text,
-    lineHeight: 23,
+    lineHeight: 21,
     fontFamily: font.family,
   },
   block: { gap: space.xs },
   bullet: {
     fontSize: font.size.sm,
     color: colour.text,
-    lineHeight: 22,
+    lineHeight: 20,
     fontFamily: font.family,
   },
   faint: { fontSize: font.size.sm, color: colour.textMuted, fontFamily: font.family },
@@ -279,7 +279,7 @@ const styles = StyleSheet.create({
   actionText: {
     fontSize: font.size.md,
     color: colour.text,
-    lineHeight: 22,
+    lineHeight: 20,
     fontFamily: font.family,
   },
 

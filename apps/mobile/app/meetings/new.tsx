@@ -255,7 +255,7 @@ const styles = StyleSheet.create({
   meta: {
     fontSize: font.size.sm,
     color: colour.textMuted,
-    lineHeight: 20,
+    lineHeight: 18,
     fontFamily: font.family,
   },
 

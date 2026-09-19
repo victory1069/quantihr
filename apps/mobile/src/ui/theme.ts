@@ -277,7 +277,9 @@ const MONO = Platform.select({
 export const font = {
   family: FAMILY,
   mono: MONO,
-  size: { xs: 12, sm: 13, md: 15, lg: 18, xl: 22, xxl: 30, display: 44, hero: 56 },
+  // Trimmed after the first device build: the mockups read big on a laptop
+  // and too big in the hand. Body is 14, the greeting 36; nothing above 44.
+  size: { xs: 11, sm: 12, md: 14, lg: 16, xl: 19, xxl: 26, display: 36, hero: 44 },
   weight: {
     regular: '400',
     medium: '500',

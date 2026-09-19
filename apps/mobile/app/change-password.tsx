@@ -97,7 +97,7 @@ export default function ChangePassword() {
         keyboardShouldPersistTaps="handled"
       >
         <View style={styles.brand}>
-          <LogoMark size={44} />
+          <LogoMark size={36} />
           <Text style={styles.title}>{forced ? 'Choose your password' : 'Change your password'}</Text>
           <Text style={styles.lede}>
             {forced
@@ -203,7 +203,7 @@ const styles = StyleSheet.create({
   lede: {
     fontSize: font.size.md,
     color: colour.textMuted,
-    lineHeight: 23,
+    lineHeight: 21,
     fontFamily: font.family,
   },
   input: {
@@ -211,7 +211,7 @@ const styles = StyleSheet.create({
     borderColor: colour.borderStrong,
     borderRadius: radius.md,
     paddingHorizontal: space.lg,
-    minHeight: 56,
+    minHeight: 50,
     fontSize: font.size.lg,
     color: colour.text,
     backgroundColor: colour.surfaceSunken,
@@ -221,7 +221,7 @@ const styles = StyleSheet.create({
   hint: {
     fontSize: font.size.sm,
     color: colour.textFaint,
-    lineHeight: 19,
+    lineHeight: 17,
     fontFamily: font.family,
     marginTop: -space.xs,
   },

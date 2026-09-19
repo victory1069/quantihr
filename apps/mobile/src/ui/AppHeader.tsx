@@ -48,7 +48,7 @@ export function AppHeader() {
           accessibilityLabel="Quanti home"
           hitSlop={8}
         >
-          <LogoMark size={30} />
+          <LogoMark size={26} />
         </Pressable>
 
         <View style={styles.right}>

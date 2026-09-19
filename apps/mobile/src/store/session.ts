@@ -192,44 +192,66 @@ export function hasRole(me: MeResponse | null, ...roles: Role[]): boolean {
 export const isManager = (me: MeResponse | null): boolean =>
   hasRole(me, 'manager', 'hr_admin', 'owner')
 
+export type RefreshOutcome = 'ok' | 'rejected' | 'offline'
+
+let refreshInFlight: Promise<RefreshOutcome> | null = null
+
+/**
+ * The one place a refresh token is spent.
+ *
+ * Tokens rotate on use, and the server treats a second use of the same token
+ * as theft and revokes the family. So every caller — launch restore, the API
+ * client's 401 retry — shares a single in-flight refresh rather than racing
+ * to spend the same token twice.
+ */
+export function refreshSession(): Promise<RefreshOutcome> {
+  if (refreshInFlight) return refreshInFlight
+  refreshInFlight = (async (): Promise<RefreshOutcome> => {
+    const refresh = await getRefreshToken()
+    if (!refresh) return 'rejected'
+    try {
+      const { API_BASE_URL } = await import('../api/client')
+      const response = await fetch(`${API_BASE_URL}/v1/auth/refresh`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ refreshToken: refresh }),
+      })
+      if (!response.ok) {
+        // Expired or revoked — back to sign-in.
+        await clearTokens()
+        return 'rejected'
+      }
+      const session = (await response.json()) as {
+        accessToken: string
+        refreshToken: string
+        deviceReviewRequired: boolean
+        mustChangePassword?: boolean
+      }
+      await setTokens(session.accessToken, session.refreshToken)
+      useSession.setState({
+        deviceReviewRequired: session.deviceReviewRequired,
+        mustChangePassword: session.mustChangePassword ?? false,
+      })
+      return 'ok'
+    } catch {
+      // A network failure is not an expired session — keep the refresh token.
+      return 'offline'
+    } finally {
+      refreshInFlight = null
+    }
+  })()
+  return refreshInFlight
+}
+
 /** Restores a session on launch. Returns false when the user must sign in. */
 export async function restoreSession(): Promise<boolean> {
-  const refresh = await getRefreshToken()
-  if (!refresh) {
+  const outcome = await refreshSession()
+  if (outcome === 'rejected') {
     useSession.setState({ status: 'signed-out' })
     return false
   }
-
-  try {
-    const { API_BASE_URL } = await import('../api/client')
-    const response = await fetch(`${API_BASE_URL}/v1/auth/refresh`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ refreshToken: refresh }),
-    })
-
-    if (!response.ok) {
-      // Expired or revoked — back to sign-in.
-      await clearTokens()
-      return false
-    }
-
-    const session = (await response.json()) as {
-      accessToken: string
-      refreshToken: string
-      deviceReviewRequired: boolean
-      mustChangePassword?: boolean
-    }
-    await setTokens(session.accessToken, session.refreshToken)
-    useSession.setState({
-      deviceReviewRequired: session.deviceReviewRequired,
-      mustChangePassword: session.mustChangePassword ?? false,
-    })
-    return true
-  } catch {
-    // Offline at launch: keep the session and let cached data render. The app
-    // must be useful with no network (spec §5).
-    useSession.setState({ status: 'authenticated' })
-    return true
-  }
+  // Offline at launch: keep the session and let cached data render. The app
+  // must be useful with no network (spec §5).
+  if (outcome === 'offline') useSession.setState({ status: 'authenticated' })
+  return true
 }

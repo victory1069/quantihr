@@ -93,7 +93,7 @@ export default function AuthCallback() {
 
   return (
     <View style={styles.centre}>
-      <LogoLoader size={88} />
+      <LogoLoader size={72} />
       <Text style={styles.text}>Signing you in…</Text>
     </View>
   )
