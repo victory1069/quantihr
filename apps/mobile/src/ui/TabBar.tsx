@@ -139,8 +139,11 @@ export function TabBar() {
   // Measured rather than assumed. The old bar interpolated against
   // MAX_CONTENT_WIDTH, which is only the real width on a wide screen; on a
   // phone the pill would have slid to the wrong place.
+  // onLayout reports the border box, so both the padding and the border come
+  // off before dividing into slots — the tabs themselves flex inside exactly
+  // that content box, and the pill must agree with them to the pixel.
   const [width, setWidth] = useState(0)
-  const slot = width > 0 ? (width - PILL_PAD * 2) / tabs.length : 0
+  const slot = width > 0 ? (width - (PILL_PAD + BORDER) * 2) / tabs.length : 0
   const pillColour = managerMode && canManage ? colour.accent : colour.primary
 
   return (
@@ -162,7 +165,7 @@ export function TabBar() {
                   {
                     translateX: slide.interpolate({
                       inputRange: tabs.map((_, i) => i),
-                      outputRange: tabs.map((_, i) => PILL_PAD + i * slot),
+                      outputRange: tabs.map((_, i) => i * slot),
                     }),
                   },
                 ],
@@ -252,6 +255,7 @@ function TabButton({
 
 /** Inset between the pill container's edge and the sliding pill. */
 const PILL_PAD = 6
+const BORDER = 1
 
 const styles = StyleSheet.create({
   // Floats over the content rather than sitting under it. The screen adds
@@ -273,13 +277,18 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     backgroundColor: colour.surface,
     borderRadius: radius.pill,
-    borderWidth: 1,
+    borderWidth: BORDER,
     borderColor: colour.border,
     padding: PILL_PAD,
     ...(Platform.OS === 'web' ? { backdropFilter: 'blur(14px)' } : {}),
   },
   pill: {
+    // Anchored at the content box's origin; the slide is a pure translate
+    // from there. Left unset, an absolute child starts after the padding and
+    // the translate added the padding again — the pill sat 6px right of the
+    // icon it was meant to frame.
     position: 'absolute',
+    left: PILL_PAD,
     top: PILL_PAD,
     bottom: PILL_PAD,
     borderRadius: radius.pill,

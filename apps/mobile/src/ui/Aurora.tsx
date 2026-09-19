@@ -34,19 +34,34 @@ const BLOBS: Blob[] = [
   { tint: '#0B6B7A', size: 1.3, x: 0.5, y: 0.95, dx: 40, dy: -60, period: 37_000, opacity: 0.22 },
 ]
 
-export function Aurora() {
+/**
+ * `intensity` scales the whole thing. Sign-in runs it at 1, where the colour
+ * is the point; inside the app it runs low, a slow shift behind the sheets
+ * rather than something to look at.
+ */
+export function Aurora({ intensity = 1 }: { intensity?: number }) {
   const { width, height } = useWindowDimensions()
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
       {BLOBS.map((b, i) => (
-        <Disc key={i} blob={b} width={width} height={height} />
+        <Disc key={i} blob={b} width={width} height={height} intensity={intensity} />
       ))}
     </View>
   )
 }
 
-function Disc({ blob, width, height }: { blob: Blob; width: number; height: number }) {
+function Disc({
+  blob,
+  width,
+  height,
+  intensity,
+}: {
+  blob: Blob
+  width: number
+  height: number
+  intensity: number
+}) {
   const t = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
@@ -103,7 +118,7 @@ function Disc({ blob, width, height }: { blob: Blob; width: number; height: numb
             height: d * r,
             borderRadius: (d * r) / 2,
             backgroundColor: blob.tint,
-            opacity: blob.opacity * 0.3,
+            opacity: blob.opacity * 0.3 * intensity,
           }}
         />
       ))}

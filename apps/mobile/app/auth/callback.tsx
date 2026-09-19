@@ -102,15 +102,15 @@ export default function AuthCallback() {
 const styles = StyleSheet.create({
   centre: {
     flex: 1,
+    backgroundColor: colour.bg,
     alignItems: 'center',
     justifyContent: 'center',
     gap: space.xl,
-    backgroundColor: colour.bg,
   },
   centreColumn: {
     flex: 1,
-    justifyContent: 'center',
     backgroundColor: colour.bg,
+    justifyContent: 'center',
     paddingHorizontal: space.lg,
     width: '100%',
     maxWidth: MAX_CONTENT_WIDTH,

@@ -35,6 +35,7 @@ import {
   type ViewStyle,
 } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { Aurora } from './Aurora'
 import {
   font,
   MAX_CONTENT_WIDTH,
@@ -70,10 +71,10 @@ export function Screen({
   const inner = <View style={styles.column}>{children}</View>
 
   const body = !scroll ? (
-    <View style={[styles.screen, { backgroundColor: c.bg }]}>{inner}</View>
+    <View style={styles.screen}>{inner}</View>
   ) : (
     <ScrollView
-      style={[styles.screen, { backgroundColor: c.bg }]}
+      style={styles.fill}
       contentContainerStyle={[
         styles.scrollContent,
         // Room for the action to sit over the end of the list rather than on
@@ -88,17 +89,25 @@ export function Screen({
     </ScrollView>
   )
 
-  if (!floating) return body
-
   return (
-    <View style={styles.screen}>
+    <View style={[styles.screen, { backgroundColor: c.bg }]}>
+      <Aurora intensity={QUIET} />
       {body}
-      <View style={styles.floating} pointerEvents="box-none">
-        {floating}
-      </View>
+      {floating ? (
+        <View style={styles.floating} pointerEvents="box-none">
+          {floating}
+        </View>
+      ) : null}
     </View>
   )
 }
+
+/**
+ * How strong the colour drift runs behind an in-app screen. Sign-in runs it
+ * at 1, where the colour is the subject; here it is a slow shift behind the
+ * sheets, felt more than seen.
+ */
+const QUIET = 0.35
 
 /**
  * A page whose content rises in a sheet over its own title.
@@ -150,6 +159,7 @@ export function SheetPage({
 
   return (
     <View style={[styles.screen, { backgroundColor: c.bg }]}>
+      <Aurora intensity={QUIET} />
       <Animated.View
         style={[
           styles.sheetHead,
@@ -262,6 +272,7 @@ export function HeroSheet({
       style={[styles.screen, { backgroundColor: c.bg }]}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      <Aurora intensity={QUIET} />
       <Animated.View
         style={[
           styles.heroArea,
@@ -839,6 +850,7 @@ export function Divider() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  fill: { flex: 1 },
   sheetHead: {
     paddingHorizontal: space.lg,
     paddingTop: space.md,

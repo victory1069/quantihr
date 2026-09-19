@@ -112,7 +112,7 @@ function ModeSwitch({ on, onChange }: { on: boolean; onChange: (next: boolean) =
 
 const styles = StyleSheet.create({
   wrap: {
-    backgroundColor: colour.bg,
+    backgroundColor: 'transparent',
     paddingBottom: space.md,
   },
   inner: {

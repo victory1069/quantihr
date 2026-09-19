@@ -19,6 +19,7 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-nativ
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LogoMark } from '../src/ui/Logo'
+import { Aurora } from '../src/ui/Aurora'
 import { colour, font, MAX_CONTENT_WIDTH, radius, space } from '../src/ui/theme'
 import { authenticate } from '../src/ui/BiometricGate'
 import { clearTokens, useSession } from '../src/store/session'
@@ -110,6 +111,7 @@ export default function Unlock() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
+      <Aurora intensity={0.35} />
       <View style={[styles.column, styles.centred]}>
         <View style={styles.glow} pointerEvents="none" />
         <LogoMark size={64} />

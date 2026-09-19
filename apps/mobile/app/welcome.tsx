@@ -15,6 +15,7 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-nativ
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { Button } from '../src/ui/components'
+import { Aurora } from '../src/ui/Aurora'
 import { Avatar, Figure } from '../src/ui/primitives'
 import { colour, font, MAX_CONTENT_WIDTH, radius, space } from '../src/ui/theme'
 import { useInvite } from '../src/api/invite'
@@ -41,6 +42,7 @@ export default function Welcome() {
 
   return (
     <View style={styles.root}>
+      <Aurora intensity={0.35} />
       <Animated.View
         style={[
           styles.column,

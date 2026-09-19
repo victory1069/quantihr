@@ -31,6 +31,7 @@ import { clearTokens, hasOnboarded, useSession } from '../src/store/session'
 import { Button, Card, ErrorNotice } from '../src/ui/components'
 import { Label } from '../src/ui/primitives'
 import { LogoMark } from '../src/ui/Logo'
+import { Aurora } from '../src/ui/Aurora'
 import { colour, font, MAX_CONTENT_WIDTH, radius, space } from '../src/ui/theme'
 
 const MIN_LENGTH = 10
@@ -89,6 +90,7 @@ export default function ChangePassword() {
       style={styles.root}
       behavior={Platform.OS === 'ios' ? 'padding' : undefined}
     >
+      <Aurora intensity={0.35} />
       <ScrollView
         contentContainerStyle={[
           styles.column,
