@@ -388,14 +388,29 @@ export const speakerClip = z.object({
   employeeId: uuid.nullable(),
 })
 
+export const meetingInvitee = z.object({
+  employeeId: uuid,
+  /** Optional attendees are invited but never generate an absence. */
+  optional: z.boolean().default(false),
+})
+
 export const createMeeting = z.object({
   title: z.string().min(1),
   meetingTypeId: uuid.nullable().optional(),
   scheduledStart: isoInstant,
   scheduledEnd: isoInstant,
   locationId: uuid.nullable().optional(),
-  /** Employee ids expected to attend. */
+  /** In the room, or on a call. Decides how attendance is taken. */
+  source: meetingSource.default('in_person'),
+  /** Employee ids expected to attend — the older shape, all required. */
   inviteeIds: z.array(uuid).default([]),
+  /** Invitees with a required/optional flag each. Merged with inviteeIds. */
+  invitees: z.array(meetingInvitee).default([]),
+})
+
+/** An invitee's answer to the invitation. */
+export const meetingRsvp = z.object({
+  response: z.enum(['accepted', 'declined', 'tentative']),
 })
 
 export const meetingDispute = z.object({

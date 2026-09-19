@@ -24,6 +24,7 @@ import { SyncBanner } from '../src/ui/SyncBanner'
 import { colour } from '../src/ui/theme'
 import { restoreSession, useSession } from '../src/store/session'
 import { useMe } from '../src/api/queries'
+import { listenForNotificationTaps, registerForPush } from '../src/lib/push'
 import { drainOutbox } from '../src/api/sync'
 import { startSyncLoop } from '../src/api/sync-loop'
 
@@ -71,9 +72,21 @@ function ProfileSync() {
   const status = useSession((s) => s.status)
   const setMe = useSession((s) => s.setMe)
   const me = useMe({ enabled: status === 'authenticated' })
+  const router = useRouter()
   useEffect(() => {
     if (me.data) setMe(me.data)
   }, [me.data, setMe])
+
+  // Push: register the token once a session exists, and act on taps.
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    void registerForPush()
+    let stop: (() => void) | undefined
+    void listenForNotificationTaps(router).then((s) => {
+      stop = s
+    })
+    return () => stop?.()
+  }, [status, router])
   return null
 }
 

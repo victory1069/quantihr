@@ -35,6 +35,7 @@ export type AuditAction =
   | 'payroll.run_approved'
   | 'payroll.run_paid'
   | 'meeting.created'
+  | 'meeting.rsvp'
   | 'meeting.recording_started'
   | 'meeting.reviewed'
   | 'meeting.dispute_resolved'

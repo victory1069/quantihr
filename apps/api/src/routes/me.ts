@@ -7,7 +7,7 @@
  */
 
 import type { FastifyInstance } from 'fastify'
-import { eq } from 'drizzle-orm'
+import { desc, eq } from 'drizzle-orm'
 import { ApiError, ERROR_CODES, schemas } from '@quanti/shared'
 import { employees, users, workSchedules } from '../db/schema.js'
 import type { Database } from '../db/client.js'
@@ -154,7 +154,8 @@ export function registerMeRoutes(app: FastifyInstance, _db: Database): void {
         .select()
         .from(notifications)
         .where(eq(notifications.userId, auth.userId))
-        .orderBy(notifications.createdAt)
+        // Newest first: an inbox is read from the top.
+        .orderBy(desc(notifications.createdAt))
         .limit(50)
     })
     return reply.send({
@@ -164,6 +165,9 @@ export function registerMeRoutes(app: FastifyInstance, _db: Database): void {
         title: n.title,
         body: n.body,
         deepLink: n.deepLink,
+        // Carries the actions an event offers (accept/decline, approve/…) and
+        // the ids the app needs to act on them without another round trip.
+        data: n.data ?? {},
         readAt: n.readAt?.toISOString() ?? null,
         createdAt: n.createdAt.toISOString(),
       })),

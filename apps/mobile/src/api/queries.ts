@@ -475,6 +475,19 @@ export function useMeetings(window: 'upcoming' | 'past' = 'past') {
   })
 }
 
+/** An invitee's answer. The meeting refetches so the list shows it at once. */
+export function useRsvp(id: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (response: 'accepted' | 'declined' | 'tentative') =>
+      api.post(`/v1/meetings/${id}/rsvp`, { response }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.meeting(id) })
+      void queryClient.invalidateQueries({ queryKey: keys.meetings('upcoming') })
+    },
+  })
+}
+
 export function useMeeting(id: string | undefined) {
   return useQuery({
     queryKey: keys.meeting(id ?? ''),
@@ -694,7 +707,7 @@ export function useCreateMeeting() {
       title: string
       scheduledStart: string
       scheduledEnd: string
-      inviteeIds: string[]
+      invitees: { employeeId: string; optional: boolean }[]
       physical: boolean
       venue?: string
     }) => {
@@ -702,7 +715,8 @@ export function useCreateMeeting() {
         title: input.title,
         scheduledStart: input.scheduledStart,
         scheduledEnd: input.scheduledEnd,
-        inviteeIds: input.inviteeIds,
+        source: input.physical ? 'in_person' : 'google_meet',
+        invitees: input.invitees,
       })
 
       if (!input.physical) return { id: created.id, code: null as string | null }

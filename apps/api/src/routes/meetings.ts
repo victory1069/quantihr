@@ -263,22 +263,66 @@ export function registerMeetingRoutes(app: FastifyInstance, db: Database): void 
           scheduledStart: new Date(body.scheduledStart),
           scheduledEnd: new Date(body.scheduledEnd),
           locationId: body.locationId ?? null,
-          source: 'in_person',
+          source: body.source,
           status: 'scheduled',
           routeToHr,
         })
         .returning()
 
-      const inviteeIds = new Set([...body.inviteeIds, auth.employeeId])
-      for (const employeeId of inviteeIds) {
+      // One row per invitee, the host's own marked accepted. Everyone else
+      // starts at needs_action and answers from the notification or the
+      // meeting screen; "expected" is what attendance is judged against, and
+      // an optional invitee is never expected.
+      const invitees = new Map<string, boolean>()
+      for (const id of body.inviteeIds) invitees.set(id, false)
+      for (const i of body.invitees) invitees.set(i.employeeId, i.optional)
+      invitees.delete(auth.employeeId)
+
+      await tx.insert(meetingParticipants).values({
+        orgId: auth.orgId,
+        meetingId: meeting!.id,
+        employeeId: auth.employeeId,
+        inviteStatus: 'accepted',
+        isOptional: false,
+        expected: true,
+      })
+      for (const [employeeId, optional] of invitees) {
         await tx.insert(meetingParticipants).values({
           orgId: auth.orgId,
           meetingId: meeting!.id,
           employeeId,
-          inviteStatus: 'accepted',
-          isOptional: false,
-          expected: true,
+          inviteStatus: 'needs_action',
+          isOptional: optional,
+          expected: !optional,
         })
+      }
+
+      const [host] = await tx
+        .select({ firstName: employees.firstName, lastName: employees.lastName })
+        .from(employees)
+        .where(eq(employees.id, auth.employeeId))
+        .limit(1)
+      const when = formatWhen(new Date(body.scheduledStart), new Date(body.scheduledEnd))
+      const where = body.source === 'in_person' ? 'In person' : 'Virtual'
+
+      if (invitees.size > 0) {
+        const people = await tx
+          .select({ id: employees.id, userId: employees.userId })
+          .from(employees)
+          .where(inArray(employees.id, [...invitees.keys()]))
+        for (const person of people) {
+          if (!person.userId) continue
+          const optional = invitees.get(person.id) ?? false
+          await queueNotification(tx, {
+            orgId: auth.orgId,
+            userId: person.userId,
+            event: 'meeting.invited',
+            title: `${host ? fullName(host) : 'Your manager'} invited you: ${body.title}`,
+            body: `${when} · ${where} · ${optional ? 'Optional' : 'Required'}`,
+            deepLink: `/meetings/${meeting!.id}`,
+            data: { meetingId: meeting!.id, optional },
+          })
+        }
       }
 
       await audit(tx, {
@@ -287,7 +331,7 @@ export function registerMeetingRoutes(app: FastifyInstance, db: Database): void 
         action: 'meeting.created',
         entityType: 'meeting',
         entityId: meeting!.id,
-        after: { title: body.title, source: 'in_person', routeToHr },
+        after: { title: body.title, source: body.source, routeToHr, invited: invitees.size },
         ip: request.ip,
       })
 
@@ -295,6 +339,82 @@ export function registerMeetingRoutes(app: FastifyInstance, db: Database): void 
     })
 
     return reply.status(201).send({ id: created.id, routeToHr: created.routeToHr })
+  })
+
+  /**
+   * An invitee's answer. Only the invitee can answer for themselves, and a
+   * decline from someone required tells the host — a required person who is
+   * not coming is something to know before the room fills.
+   */
+  app.post('/v1/meetings/:id/rsvp', async (request, reply) => {
+    const auth = requireAuth(request)
+    const { id } = request.params as { id: string }
+    const body = schemas.meetings.meetingRsvp.parse(request.body)
+
+    await tenant(request, async (tx) => {
+      const [row] = await tx
+        .select({
+          id: meetingParticipants.id,
+          isOptional: meetingParticipants.isOptional,
+          title: meetings.title,
+          hostEmployeeId: meetings.hostEmployeeId,
+          status: meetings.status,
+        })
+        .from(meetingParticipants)
+        .innerJoin(meetings, eq(meetings.id, meetingParticipants.meetingId))
+        .where(
+          and(
+            eq(meetingParticipants.meetingId, id),
+            eq(meetingParticipants.employeeId, auth.employeeId),
+          ),
+        )
+        .limit(1)
+      if (!row) throw new ApiError(ERROR_CODES.NOT_FOUND, 'You were not invited to that meeting', 404)
+      if (row.status !== 'scheduled') {
+        throw new ApiError(ERROR_CODES.VALIDATION_FAILED, 'That meeting has already started', 422)
+      }
+
+      await tx
+        .update(meetingParticipants)
+        .set({ inviteStatus: body.response })
+        .where(eq(meetingParticipants.id, row.id))
+
+      if (body.response === 'declined' && !row.isOptional && row.hostEmployeeId) {
+        const [host] = await tx
+          .select({ userId: employees.userId })
+          .from(employees)
+          .where(eq(employees.id, row.hostEmployeeId))
+          .limit(1)
+        const [me] = await tx
+          .select({ firstName: employees.firstName, lastName: employees.lastName })
+          .from(employees)
+          .where(eq(employees.id, auth.employeeId))
+          .limit(1)
+        if (host?.userId && me) {
+          await queueNotification(tx, {
+            orgId: auth.orgId,
+            userId: host.userId,
+            event: 'meeting.rsvp',
+            title: `${fullName(me)} can't make ${row.title}`,
+            body: 'They were required. Reschedule, or go ahead without them.',
+            deepLink: `/meetings/${id}`,
+            data: { meetingId: id },
+          })
+        }
+      }
+
+      await audit(tx, {
+        orgId: auth.orgId,
+        actorUserId: auth.userId,
+        action: 'meeting.rsvp',
+        entityType: 'meeting',
+        entityId: id,
+        after: { response: body.response },
+        ip: request.ip,
+      })
+    })
+
+    return reply.status(204).send()
   })
 
   /** Room check-in, reusing the office check-in code mechanism (§3.1). */
@@ -1546,4 +1666,11 @@ async function concatChunks(orgId: string, meetingId: string): Promise<Buffer> {
     )
   }
   return Buffer.concat(parts)
+}
+
+/** "Mon 22 Sep, 09:00–10:00" for an invitation. */
+function formatWhen(start: Date, end: Date): string {
+  const day = start.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })
+  const t = (d: Date) => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+  return `${day}, ${t(start)}–${t(end)}`
 }
