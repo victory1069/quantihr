@@ -130,7 +130,9 @@ export default function RootLayout() {
   // control in the sheet, not a tab.
   const decisionSheet =
     (root === 'manage' && segments[1] === 'approvals' && !!segments[2]) ||
-    (root === 'meetings' && segments[2] === 'review')
+    (root === 'manage' && segments[1] === 'training' && !!segments[2]) ||
+    (root === 'meetings' && segments[2] === 'review') ||
+    (root === 'learning' && !!segments[1])
   const fullScreen =
     onAuthRoute ||
     root === 'welcome' ||

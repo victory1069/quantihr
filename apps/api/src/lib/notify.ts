@@ -28,6 +28,11 @@ export type NotificationEvent =
   | 'meeting.recording_started'
   | 'meeting.invited'
   | 'meeting.rsvp'
+  | 'training.plan_submitted'
+  | 'training.plan_decided'
+  | 'training.starts'
+  | 'training.proof_due'
+  | 'training.plan_due'
 
 export interface NotificationInput {
   orgId: string
@@ -60,6 +65,11 @@ const PREFERENCE_KEY: Record<NotificationEvent, string> = {
   'meeting.recording_started': 'recordingAlerts',
   'meeting.invited': 'meetings',
   'meeting.rsvp': 'meetings',
+  'training.plan_submitted': 'training',
+  'training.plan_decided': 'training',
+  'training.starts': 'training',
+  'training.proof_due': 'training',
+  'training.plan_due': 'training',
 }
 
 /**

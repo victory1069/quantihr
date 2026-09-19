@@ -160,6 +160,12 @@ export default function Me() {
             detail="What you took on in meetings"
             onPress={() => router.push('/tasks')}
           />
+          <Divider />
+          <HubRow
+            label="Learning"
+            detail="Your training plans and certificates"
+            onPress={() => router.push('/learning')}
+          />
         </Card>
       </Appear>
 

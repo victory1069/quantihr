@@ -24,6 +24,8 @@ import type {
   TeamAttendanceResponse,
   TeamCalendarResponse,
   ApprovalItem,
+  TrainingItemInput,
+  TrainingPlanView,
 } from '@quanti/shared'
 import { api } from './client'
 import { enqueue } from '../lib/outbox'
@@ -49,6 +51,8 @@ export const keys = {
   tasks: (status: string) => ['tasks', status] as const,
   meetingAttendance: (source: string) => ['attendance', 'meetings', source] as const,
   meetingCodes: ['meetings', 'codes'] as const,
+  training: ['training', 'mine'] as const,
+  teamTraining: ['training', 'team'] as const,
 }
 
 /** Long stale time: these change rarely and must render instantly from cache. */
@@ -750,5 +754,89 @@ export interface AskResult {
 export function useAskPolicy() {
   return useMutation({
     mutationFn: (question: string) => api.post<AskResult>('/v1/ask', { question }),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Learning & development
+// ---------------------------------------------------------------------------
+
+export function useTrainingPlans() {
+  return useQuery({
+    queryKey: keys.training,
+    queryFn: ({ signal }) => api.get<{ plans: TrainingPlanView[] }>('/v1/training/plans', signal),
+    ...LIVE,
+  })
+}
+
+export function useTeamTraining(enabled: boolean) {
+  return useQuery({
+    queryKey: keys.teamTraining,
+    queryFn: ({ signal }) => api.get<{ plans: TrainingPlanView[] }>('/v1/team/training', signal),
+    enabled,
+    ...LIVE,
+  })
+}
+
+export function useSaveTrainingPlan() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: {
+      periodType: 'month' | 'quarter'
+      periodStart: string
+      items: TrainingItemInput[]
+      submit: boolean
+    }) =>
+      (async () => {
+        const saved = await api.post<TrainingPlanView>('/v1/training/plans', {
+          periodType: input.periodType,
+          periodStart: input.periodStart,
+          items: input.items,
+        })
+        if (!input.submit) return saved
+        return api.post<TrainingPlanView>(`/v1/training/plans/${saved.id}/submit`)
+      })(),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.training }),
+  })
+}
+
+export function useSubmitTrainingPlan() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.post<TrainingPlanView>(`/v1/training/plans/${id}/submit`),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.training }),
+  })
+}
+
+export function useDecideTrainingPlan() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string
+      decision: 'approve' | 'decline' | 'request_changes'
+      note?: string
+    }) => api.post<TrainingPlanView>(`/v1/team/training/${id}`, body),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.teamTraining }),
+  })
+}
+
+export function useCompleteTraining() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string
+      note?: string
+      proof?: { filename: string; contentType: string; contentBase64: string }
+    }) => api.post(`/v1/training/items/${id}/complete`, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.training })
+      void queryClient.invalidateQueries({ queryKey: keys.documents })
+    },
   })
 }

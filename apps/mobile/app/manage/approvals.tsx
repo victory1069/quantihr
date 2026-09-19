@@ -35,6 +35,7 @@ import {
   useDecideApproval,
   useMe,
   useTeamAttendance,
+  useTeamTraining,
 } from '../../src/api/queries'
 import { isManager, useSession } from '../../src/store/session'
 import { formatRange } from '../../src/lib/dates'
@@ -59,6 +60,7 @@ export default function Approvals() {
     return { from: start.toISOString().slice(0, 10), to: today.toISOString().slice(0, 10) }
   }, [])
   const attendance = useTeamAttendance(from, to, canManage)
+  const training = useTeamTraining(canManage)
 
   if (!me) {
     return (
@@ -89,7 +91,8 @@ export default function Approvals() {
     (r) => r.daysLate >= Math.max(1, threshold - 1),
   )
 
-  const needs = queue.length + flags.length
+  const plansWaiting = (training.data?.plans ?? []).filter((p) => p.status === 'submitted')
+  const needs = queue.length + flags.length + plansWaiting.length
   const oldest = queue.reduce((max, a) => Math.max(max, a.waitingHours), 0)
   const escalatesIn = queue.length > 0 ? Math.max(0, Math.round(ESCALATION_HOURS - oldest)) : null
 
@@ -197,8 +200,27 @@ export default function Approvals() {
         </Card>
       )}
 
+      {plansWaiting.map((p, i) => (
+        <Appear key={p.id} index={queue.length + i}>
+          <Card onPress={() => router.push(`/manage/training/${p.id}`)}>
+            <View style={styles.row}>
+              <Avatar name={p.employeeName} size={44} colour={colour.accent} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.rowTitle}>
+                  {p.employeeName.split(' ')[0]} · training plan
+                </Text>
+                <Text style={[styles.rowSub, { color: colour.accent }]}>
+                  {p.periodLabel} · {p.items.length} course{p.items.length === 1 ? '' : 's'} · needs approval
+                </Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </View>
+          </Card>
+        </Appear>
+      ))}
+
       {flags.map((r, i) => (
-        <Appear key={r.employeeId} index={queue.length + i}>
+        <Appear key={r.employeeId} index={queue.length + plansWaiting.length + i}>
           <Card tone="warning" onPress={() => router.push('/manage/attendance')}>
             <View style={styles.row}>
               <View style={styles.flagMark}>

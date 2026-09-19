@@ -939,7 +939,9 @@ const styles = StyleSheet.create({
   floating: {
     position: 'absolute',
     right: space.lg,
-    bottom: space.lg,
+    // Clear of the floating tab bar (48 tall, padded, plus the home
+    // indicator): a button the bar covers is a button nobody can press.
+    bottom: 112,
     alignItems: 'flex-end',
     gap: space.sm,
   },

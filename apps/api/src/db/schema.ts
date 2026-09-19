@@ -622,6 +622,56 @@ export const policyDocuments = pgTable(
   (t) => ({ orgIdx: index('policy_documents_org_idx').on(t.orgId, t.createdAt) }),
 )
 
+export const trainingPlans = pgTable(
+  'training_plans',
+  {
+    id: id(),
+    orgId: orgId(),
+    employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+    periodType: text('period_type').notNull().default('month'),
+    periodStart: date('period_start').notNull(),
+    status: text('status').notNull().default('draft'),
+    submittedAt: timestamp('submitted_at', { withTimezone: true }),
+    decidedAt: timestamp('decided_at', { withTimezone: true }),
+    decidedBy: uuid('decided_by').references(() => users.id, { onDelete: 'set null' }),
+    decisionNote: text('decision_note'),
+    createdAt: createdAt(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => ({
+    employeeIdx: index('training_plans_employee_idx').on(t.orgId, t.employeeId, t.periodStart),
+    period: uniqueIndex('training_plans_period_key').on(t.orgId, t.employeeId, t.periodType, t.periodStart),
+  }),
+)
+
+export const trainingItems = pgTable(
+  'training_items',
+  {
+    id: id(),
+    orgId: orgId(),
+    planId: uuid('plan_id').notNull().references(() => trainingPlans.id, { onDelete: 'cascade' }),
+    employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    provider: text('provider'),
+    mode: text('mode').notNull().default('virtual'),
+    startDate: date('start_date').notNull(),
+    endDate: date('end_date').notNull(),
+    need: text('need').notNull().default(''),
+    costKobo: bigint('cost_kobo', { mode: 'number' }),
+    status: text('status').notNull().default('planned'),
+    proofDocumentId: uuid('proof_document_id').references(() => documents.id, { onDelete: 'set null' }),
+    proofNote: text('proof_note'),
+    completedAt: timestamp('completed_at', { withTimezone: true }),
+    lastReminder: text('last_reminder'),
+    lastReminderAt: timestamp('last_reminder_at', { withTimezone: true }),
+    createdAt: createdAt(),
+  },
+  (t) => ({
+    planIdx: index('training_items_plan_idx').on(t.orgId, t.planId),
+    datesIdx: index('training_items_dates_idx').on(t.orgId, t.status, t.endDate),
+  }),
+)
+
 export const speakerMappings = pgTable(
   'speaker_mappings',
   {

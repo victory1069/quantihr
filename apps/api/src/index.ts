@@ -13,6 +13,7 @@ import { env } from './lib/env.js'
 import { runAccrual } from './jobs/accrual.js'
 import { rotateCodes } from './jobs/codes.js'
 import { sweepCheckinWindows, sweepPendingApprovals } from './jobs/reminders.js'
+import { sweepTrainingReminders } from './jobs/training.js'
 import { flushNotifications } from './lib/notify.js'
 import { seedIfEmpty } from './db/seed.js'
 
@@ -49,6 +50,7 @@ async function main() {
     setInterval(() => void rotateCodes(db).catch((e) => app.log.error(e)), 60_000),
     setInterval(() => void sweepPendingApprovals(db).catch((e) => app.log.error(e)), 300_000),
     setInterval(() => void sweepCheckinWindows(db).catch((e) => app.log.error(e)), 300_000),
+    setInterval(() => void sweepTrainingReminders(db).catch((e) => app.log.error(e)), 900_000),
     setInterval(async () => {
       try {
         for (const org of await db.lookup.orgs()) await flushNotifications(db, org.orgId)

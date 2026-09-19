@@ -40,3 +40,9 @@ export type {
   LeaveType,
 } from './schemas/leave.js'
 export type { ApprovalItem, TeamAttendanceResponse, TeamCalendarResponse } from './schemas/team.js'
+export type {
+  TrainingItemInput,
+  TrainingItemView,
+  TrainingPlanView,
+  TrainingPeriod,
+} from './schemas/training.js'

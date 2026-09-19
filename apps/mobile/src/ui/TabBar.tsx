@@ -62,6 +62,12 @@ const EMPLOYEE_TABS: Tab[] = [
   },
   { href: '/todos', label: 'Todos', icon: 'todos', match: (p) => p.startsWith('/todos') },
   {
+    href: '/learning',
+    label: 'Learning',
+    icon: 'learning',
+    match: (p) => p.startsWith('/learning'),
+  },
+  {
     href: '/me',
     label: 'Me',
     icon: 'profile',
@@ -105,7 +111,8 @@ const MANAGER_TABS: Tab[] = [
       p.startsWith('/profile') ||
       p.startsWith('/payslips') ||
       p.startsWith('/leave') ||
-      p.startsWith('/attendance'),
+      p.startsWith('/attendance') ||
+      p.startsWith('/learning'),
   },
 ]
 

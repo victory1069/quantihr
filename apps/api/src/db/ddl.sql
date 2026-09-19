@@ -760,6 +760,65 @@ create table if not exists policy_documents (
 create index if not exists policy_documents_org_idx on policy_documents(org_id, created_at desc);
 
 -- ---------------------------------------------------------------------------
+-- Learning & development
+--
+-- A plan is one employee's intended training for a month or a quarter,
+-- submitted for their manager's approval. Items are the individual courses;
+-- each carries its own completion and its proof. The plan and its items are
+-- separate rows because approval is of the plan as a whole, while proof and
+-- reminders are per course.
+-- ---------------------------------------------------------------------------
+
+create table if not exists training_plans (
+  id             uuid primary key default gen_random_uuid(),
+  org_id         uuid not null references organisations(id) on delete cascade,
+  employee_id    uuid not null references employees(id) on delete cascade,
+  -- 'month' or 'quarter'; period_start is the first day of that period.
+  period_type    text not null default 'month',
+  period_start   date not null,
+  -- draft → submitted → approved | declined | changes_requested (→ submitted)
+  status         text not null default 'draft',
+  submitted_at   timestamptz,
+  decided_at     timestamptz,
+  decided_by     uuid references users(id) on delete set null,
+  decision_note  text,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now(),
+  unique (org_id, employee_id, period_type, period_start)
+);
+
+create index if not exists training_plans_employee_idx on training_plans(org_id, employee_id, period_start desc);
+
+create table if not exists training_items (
+  id                 uuid primary key default gen_random_uuid(),
+  org_id             uuid not null references organisations(id) on delete cascade,
+  plan_id            uuid not null references training_plans(id) on delete cascade,
+  employee_id        uuid not null references employees(id) on delete cascade,
+  title              text not null,
+  provider           text,
+  -- 'physical' or 'virtual'
+  mode               text not null default 'virtual',
+  start_date         date not null,
+  end_date           date not null,
+  -- Why this course, this period: the "based on need" the manager judges.
+  need               text not null default '',
+  cost_kobo          bigint,
+  -- planned → completed | missed. Set by the employee with proof, or by the
+  -- reminder sweep once the end date is long past.
+  status             text not null default 'planned',
+  proof_document_id  uuid references documents(id) on delete set null,
+  proof_note         text,
+  completed_at       timestamptz,
+  -- The last reminder kind sent, so each is sent once: 'starts', 'proof_due', 'nudge_1' …
+  last_reminder      text,
+  last_reminder_at   timestamptz,
+  created_at         timestamptz not null default now()
+);
+
+create index if not exists training_items_plan_idx on training_items(org_id, plan_id);
+create index if not exists training_items_dates_idx on training_items(org_id, status, end_date);
+
+-- ---------------------------------------------------------------------------
 -- Additive migrations
 -- ---------------------------------------------------------------------------
 
@@ -835,7 +894,7 @@ declare
     'meeting_types', 'meetings', 'meeting_participants',
     'meeting_transcripts', 'meeting_summaries', 'meeting_actions',
     'meeting_disputes', 'speaker_mappings',
-    'policy_documents'
+    'policy_documents', 'training_plans', 'training_items'
   ];
 begin
   foreach t in array tenant_tables loop

@@ -6,6 +6,7 @@ export * as team from './team.js'
 export * as documents from './documents.js'
 export * as config from './config.js'
 export * as admin from './admin.js'
+export * as training from './training.js'
 
 export type { Role, LeaveRequestStatus, AttendanceStatusValue } from './common.js'
 export type { JwtClaims, SessionResponse } from './auth.js'
