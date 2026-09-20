@@ -7,7 +7,8 @@
  */
 
 import type { FastifyInstance } from 'fastify'
-import { desc, eq } from 'drizzle-orm'
+import { and, desc, eq, inArray, isNull } from 'drizzle-orm'
+import { z } from 'zod'
 import { ApiError, ERROR_CODES, schemas } from '@quanti/shared'
 import { employees, users, workSchedules } from '../db/schema.js'
 import type { Database } from '../db/client.js'
@@ -171,6 +172,31 @@ export function registerMeRoutes(app: FastifyInstance, _db: Database): void {
         readAt: n.readAt?.toISOString() ?? null,
         createdAt: n.createdAt.toISOString(),
       })),
+      unread: rows.filter((n) => !n.readAt).length,
     })
+  })
+
+  /**
+   * Marks notifications read — the ones named, or all of the caller's when
+   * no ids are given. Only the caller's own rows can ever be touched; the
+   * tenant filter plus the user filter make the id list a hint, not a key.
+   */
+  app.post('/v1/notifications/read', async (request, reply) => {
+    const auth = requireAuth(request)
+    const body = z.object({ ids: z.array(z.string().uuid()).max(200).optional() }).parse(request.body ?? {})
+    await tenant(request, async (tx) => {
+      const { notifications } = await import('../db/schema.js')
+      await tx
+        .update(notifications)
+        .set({ readAt: new Date() })
+        .where(
+          and(
+            eq(notifications.userId, auth.userId),
+            isNull(notifications.readAt),
+            ...(body.ids && body.ids.length > 0 ? [inArray(notifications.id, body.ids)] : []),
+          ),
+        )
+    })
+    return reply.status(204).send()
   })
 }

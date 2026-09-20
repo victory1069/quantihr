@@ -39,6 +39,7 @@ import {
   meetingTranscripts,
   meetingTypes,
   meetings,
+  notifications,
   organisations,
   speakerMappings,
 } from '../db/schema.js'
@@ -378,6 +379,22 @@ export function registerMeetingRoutes(app: FastifyInstance, db: Database): void 
         .update(meetingParticipants)
         .set({ inviteStatus: body.response })
         .where(eq(meetingParticipants.id, row.id))
+
+      // The invitation in the inbox remembers the answer, so it shows "you
+      // accepted" rather than the buttons again.
+      await tx
+        .update(notifications)
+        .set({
+          data: sql`${notifications.data} || ${JSON.stringify({ answered: body.response })}::jsonb`,
+          readAt: sql`coalesce(${notifications.readAt}, now())`,
+        })
+        .where(
+          and(
+            eq(notifications.userId, auth.userId),
+            eq(notifications.event, 'meeting.invited'),
+            sql`${notifications.data} ->> 'meetingId' = ${id}`,
+          ),
+        )
 
       if (body.response === 'declined' && !row.isOptional && row.hostEmployeeId) {
         const [host] = await tx

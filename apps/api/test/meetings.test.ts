@@ -1034,6 +1034,14 @@ describe('invitations', () => {
     const hostInbox = await app.inject({ method: 'GET', url: '/v1/notifications', headers: bearer(org.managerToken) })
     expect(hostInbox.json().notifications.some((n: { event: string }) => n.event === 'meeting.rsvp')).toBe(true)
 
+    // The invitation in the inbox remembers the answer and is read.
+    const myInbox = await app.inject({ method: 'GET', url: '/v1/notifications', headers: bearer(org.accessToken) })
+    const invite = myInbox.json().notifications.find(
+      (n: { event: string; data: { meetingId?: string } }) => n.event === 'meeting.invited' && n.data.meetingId === id,
+    )
+    expect(invite.data.answered).toBe('declined')
+    expect(invite.readAt).toBeTruthy()
+
     // Someone who was not invited cannot answer.
     const outsider = await app.inject({
       method: 'POST',

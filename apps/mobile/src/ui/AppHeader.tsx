@@ -14,6 +14,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context'
 import { LogoMark } from './Logo'
 import { colour, font, MAX_CONTENT_WIDTH, radius, space } from './theme'
 import { isManager, useSession } from '../store/session'
+import { useNotifications } from '../api/queries'
 
 export function AppHeader() {
   const router = useRouter()
@@ -57,6 +58,8 @@ export function AppHeader() {
             router.replace(next ? '/manage/approvals' : '/')
           }} /> : null}
 
+          <Bell active={pathname.startsWith('/notifications')} onPress={() => router.push('/notifications')} />
+
           <Pressable
             onPress={() => router.push('/profile')}
             accessibilityRole="button"
@@ -69,6 +72,39 @@ export function AppHeader() {
         </View>
       </View>
     </View>
+  )
+}
+
+/**
+ * The bell: a drawn glyph with the unread count on it. The count comes from
+ * the same polled query the inbox uses, so it is right on the web too, where
+ * no push will ever arrive.
+ */
+function Bell({ active, onPress }: { active: boolean; onPress: () => void }) {
+  const status = useSession((s) => s.status)
+  const inbox = useNotifications(status === 'authenticated')
+  const unread = inbox.data?.unread ?? 0
+  const tint = active ? colour.primary : colour.textMuted
+
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={unread > 0 ? `Notifications, ${unread} unread` : 'Notifications'}
+      hitSlop={8}
+      style={[styles.avatar, active && styles.avatarActive]}
+    >
+      <View style={styles.bell}>
+        <View style={[styles.bellBody, { borderColor: tint }]} />
+        <View style={[styles.bellLip, { backgroundColor: tint }]} />
+        <View style={[styles.bellClapper, { backgroundColor: tint }]} />
+      </View>
+      {unread > 0 ? (
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>{unread > 9 ? '9+' : unread}</Text>
+        </View>
+      ) : null}
+    </Pressable>
   )
 }
 
@@ -144,6 +180,34 @@ const styles = StyleSheet.create({
     fontFamily: font.family,
     letterSpacing: font.tracking.wide,
   },
+
+  bell: { width: 18, height: 18, alignItems: 'center' },
+  bellBody: {
+    width: 12,
+    height: 12,
+    borderWidth: 1.8,
+    borderBottomWidth: 0,
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 6,
+    marginTop: 1,
+  },
+  bellLip: { width: 16, height: 1.8, borderRadius: 1 },
+  bellClapper: { width: 4, height: 2, borderRadius: 1, marginTop: 1.5 },
+  badge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: colour.danger,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    borderWidth: 2,
+    borderColor: colour.bg,
+  },
+  badgeText: { color: colour.text, fontSize: 10, fontWeight: font.weight.bold, fontFamily: font.family },
 
   pill: {
     flexDirection: 'row',

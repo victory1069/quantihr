@@ -488,6 +488,8 @@ export function useRsvp(id: string) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: keys.meeting(id) })
       void queryClient.invalidateQueries({ queryKey: keys.meetings('upcoming') })
+      // The invitation in the inbox now says "you accepted"; fetch that.
+      void queryClient.invalidateQueries({ queryKey: keys.notifications })
     },
   })
 }
@@ -754,6 +756,45 @@ export interface AskResult {
 export function useAskPolicy() {
   return useMutation({
     mutationFn: (question: string) => api.post<AskResult>('/v1/ask', { question }),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Notifications — the in-app inbox
+// ---------------------------------------------------------------------------
+
+export interface NotificationItem {
+  id: string
+  event: string
+  title: string
+  body: string
+  deepLink: string | null
+  data: Record<string, unknown> & { actions?: string[] }
+  readAt: string | null
+  createdAt: string
+}
+
+/**
+ * Polled while the app is open. Push is the fast path on a phone, but the
+ * inbox has to be right without it — on the web, with permission refused,
+ * or before the token registered — so this refetches every half minute.
+ */
+export function useNotifications(enabled = true) {
+  return useQuery({
+    queryKey: keys.notifications,
+    queryFn: ({ signal }) =>
+      api.get<{ notifications: NotificationItem[]; unread: number }>('/v1/notifications', signal),
+    enabled,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  })
+}
+
+export function useMarkNotificationsRead() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (ids?: string[]) => api.post('/v1/notifications/read', ids ? { ids } : {}),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.notifications }),
   })
 }
 
