@@ -48,6 +48,8 @@ interface SessionResponse {
 }
 
 type Door = 'password' | 'link'
+
+const WAKING = 'Waking the server up — the first sign-in in a while can take up to a minute.'
 type State = 'idle' | 'sending' | 'sent' | 'error'
 
 export default function SignIn() {
@@ -55,6 +57,19 @@ export default function SignIn() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [state, setState] = useState<State>('idle')
+  // True once a request has been in flight for a few seconds. On a hosted
+  // free tier the first request after a quiet spell has to wake the server,
+  // which can take most of a minute; a silent spinner that long reads as
+  // broken, a line that says what is happening does not.
+  const [slow, setSlow] = useState(false)
+  useEffect(() => {
+    if (state !== 'sending') {
+      setSlow(false)
+      return
+    }
+    const t = setTimeout(() => setSlow(true), 3000)
+    return () => clearTimeout(t)
+  }, [state])
   const [message, setMessage] = useState('')
   const [devLink, setDevLink] = useState<string | null>(null)
   const router = useRouter()
@@ -225,6 +240,7 @@ export default function SignIn() {
               loading={state === 'sending'}
               disabled={!validEmail}
             />
+            {slow ? <Text style={styles.slow}>{WAKING}</Text> : null}
             {state === 'error' ? <ErrorNotice message={message} /> : null}
             <Pressable
               onPress={() => switchDoor('password')}
@@ -263,6 +279,7 @@ export default function SignIn() {
               disabled={!canSignIn}
             />
 
+            {slow ? <Text style={styles.slow}>{WAKING}</Text> : null}
             {state === 'error' ? <ErrorNotice message={message} /> : null}
 
             <Pressable onPress={() => switchDoor('link')} accessibilityRole="button" hitSlop={8}>
@@ -304,6 +321,13 @@ const styles = StyleSheet.create({
     fontFamily: font.family,
   },
 
+  slow: {
+    fontSize: font.size.sm,
+    color: colour.textMuted,
+    textAlign: 'center',
+    lineHeight: 18,
+    fontFamily: font.family,
+  },
   switch: {
     fontSize: font.size.md,
     color: colour.primary,
