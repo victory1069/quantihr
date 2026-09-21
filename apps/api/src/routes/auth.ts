@@ -19,6 +19,7 @@ import { audit } from '../lib/audit.js'
 import { requireAuth } from '../lib/context.js'
 import { hashPassword, passwordProblem, verifyPassword } from '../lib/password.js'
 import { RateLimiter } from './invite.js'
+import { verifyGoogleIdToken } from '../lib/sso.js'
 import { magicLinkEmail, sendEmail } from '../lib/email.js'
 import { env } from '../lib/env.js'
 import {
@@ -205,6 +206,58 @@ export function registerAuthRoutes(app: FastifyInstance, db: Database): void {
     return reply.status(200).send(session)
   })
 
+
+  /**
+   * Google sign-in.
+   *
+   * Identity only. The verified email has to match an account HR already
+   * created; there is no path from a Google account to a new Quanti one, so
+   * an uninvited person is told exactly who can let them in. An invited
+   * person's first sign-in lands in the app's onboarding like any other.
+   */
+  app.post('/v1/auth/sso/google', async (request, reply) => {
+    const body = schemas.auth.ssoSignIn.parse(request.body)
+    if (!ipLimiter.check(request.ip)) {
+      throw new ApiError(ERROR_CODES.RATE_LIMITED, 'Too many attempts. Wait a minute and try again.', 429)
+    }
+
+    const identity = await verifyGoogleIdToken(body.idToken)
+    const found = await db.lookup.userByEmail(identity.email)
+    if (!found) {
+      throw new ApiError(
+        ERROR_CODES.AUTH_FORBIDDEN,
+        `${identity.email} has not been added to Quanti yet. Ask your HR team to add you, then sign in again.`,
+        403,
+        { email: identity.email, reason: 'not_invited' },
+      )
+    }
+
+    const session = await db.withTenant(found.orgId, async (tx) => {
+      const [before] = await tx
+        .select({ lastLoginAt: users.lastLoginAt })
+        .from(users)
+        .where(eq(users.id, found.userId))
+        .limit(1)
+      const established = await establishSession(
+        tx,
+        request,
+        { orgId: found.orgId, userId: found.userId },
+        body,
+      )
+      await audit(tx, {
+        orgId: found.orgId,
+        actorUserId: found.userId,
+        action: 'auth.sso_signin',
+        entityType: 'user',
+        entityId: found.userId,
+        after: { provider: 'google', firstSignIn: !before?.lastLoginAt },
+        ip: request.ip,
+      })
+      return { ...established, firstSignIn: !before?.lastLoginAt }
+    })
+
+    return reply.status(200).send(session)
+  })
 
   /**
    * Password sign-in.

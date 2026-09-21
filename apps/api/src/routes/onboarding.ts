@@ -39,7 +39,7 @@ import { requireRole, tenant } from '../lib/context.js'
  * approvals route anywhere, and a team imported before its managers exist
  * has nobody to report to.
  */
-export const ONBOARDING_STEPS = ['basics', 'leave', 'handbook', 'managers', 'organogram', 'team'] as const
+export const ONBOARDING_STEPS = ['basics', 'leave', 'handbook', 'managers', 'departments', 'organogram', 'team'] as const
 export type OnboardingStep = (typeof ONBOARDING_STEPS)[number]
 
 const stepParam = z.enum(ONBOARDING_STEPS)

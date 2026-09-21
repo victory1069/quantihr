@@ -155,7 +155,7 @@ describe('the wizard as a gate', () => {
     const status = await app.inject({ method: 'GET', url: '/v1/admin/onboarding', headers: bearer(token) })
     expect(status.statusCode).toBe(200)
     expect(status.json().steps.map((s: { step: string }) => s.step)).toEqual([
-      'basics', 'leave', 'handbook', 'managers', 'organogram', 'team',
+      'basics', 'leave', 'handbook', 'managers', 'departments', 'organogram', 'team',
     ])
     const codes = status.json().missing.map((m: { code: string }) => m.code)
     expect(codes).toEqual(expect.arrayContaining(['no_location', 'no_leave_type', 'no_staff', 'no_manager']))

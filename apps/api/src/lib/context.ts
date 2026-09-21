@@ -62,6 +62,8 @@ const PUBLIC_ROUTES = new Set([
   'POST:/v1/signup/start',
   'POST:/v1/signup/verify',
   'POST:/v1/signup/resend',
+  // Google sign-in: verified against Google, then matched to an account.
+  'POST:/v1/auth/sso/google',
   // Pre-tenant sign-up lookups; rate-limited in the route.
   'GET:/v1/auth/invite',
   'POST:/v1/auth/otp/request',

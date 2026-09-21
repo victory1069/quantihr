@@ -55,10 +55,12 @@ export async function buildServer(db: Database): Promise<FastifyInstance> {
   // The HR console is a static page served by the API itself (spec §13 leaves
   // the console framework open). It authenticates over the same /v1 endpoints
   // as the mobile client and holds no privileges of its own.
-  const consoleHtml = await readFile(
-    join(dirname(fileURLToPath(import.meta.url)), 'console/index.html'),
-    'utf8',
+  const consoleHtml = (
+    await readFile(join(dirname(fileURLToPath(import.meta.url)), 'console/index.html'), 'utf8')
   )
+    // The console is static; the one deployment-specific value it needs is
+    // which Google client to initialise the sign-in button with.
+    .replace('__GOOGLE_SSO_WEB_CLIENT_ID__', env().GOOGLE_SSO_WEB_CLIENT_ID ?? '')
   const serveConsole = async (_req: unknown, reply: { type: (t: string) => { send: (b: string) => unknown } }) =>
     reply.type('text/html; charset=utf-8').send(consoleHtml)
 

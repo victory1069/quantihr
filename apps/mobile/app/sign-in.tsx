@@ -32,6 +32,7 @@ import { Button, Card, ErrorNotice } from '../src/ui/components'
 import { Label } from '../src/ui/primitives'
 import { LogoMark } from '../src/ui/Logo'
 import { Aurora } from '../src/ui/Aurora'
+import { useGoogleIdToken } from '../src/lib/google'
 import { colour, font, MAX_CONTENT_WIDTH, radius, space } from '../src/ui/theme'
 
 interface MagicLinkResponse {
@@ -96,6 +97,42 @@ export default function SignIn() {
     setMessage('')
     setDevLink(null)
   }
+
+  // Google: identity only. The API matches the email to an account HR made;
+  // someone not yet added gets that in words, with who to ask.
+  const finishSession = async (session: SessionResponse) => {
+    await setTokens(session.accessToken, session.refreshToken)
+    useSession.setState({
+      deviceReviewRequired: session.deviceReviewRequired,
+      mustChangePassword: session.mustChangePassword,
+    })
+    if (session.mustChangePassword) router.replace('/change-password')
+    else router.replace((await hasOnboarded()) ? '/' : '/welcome')
+  }
+
+  const google = useGoogleIdToken(async (idToken) => {
+    setState('sending')
+    try {
+      const session = await request<SessionResponse>('/v1/auth/sso/google', {
+        method: 'POST',
+        raw: true,
+        body: {
+          idToken,
+          deviceId: await getDeviceId(),
+          deviceName: Platform.OS === 'web' ? 'Browser' : `${Platform.OS} device`,
+          platform: Platform.OS === 'web' ? 'web' : Platform.OS,
+        },
+      })
+      await finishSession(session)
+    } catch (error) {
+      setState('error')
+      setMessage(
+        error instanceof Error && !('offline' in error)
+          ? error.message
+          : 'Could not reach the server. Check your connection and try again.',
+      )
+    }
+  })
 
   const signInWithPassword = async () => {
     if (!canSignIn) return
@@ -281,6 +318,16 @@ export default function SignIn() {
 
             {slow ? <Text style={styles.slow}>{WAKING}</Text> : null}
             {state === 'error' ? <ErrorNotice message={message} /> : null}
+            {google.error ? <ErrorNotice message={google.error} /> : null}
+
+            {google.enabled ? (
+              <Button
+                label="Continue with Google"
+                variant="secondary"
+                disabled={!google.ready || state === 'sending'}
+                onPress={google.prompt}
+              />
+            ) : null}
 
             <Pressable onPress={() => switchDoor('link')} accessibilityRole="button" hitSlop={8}>
               <Text style={styles.switch}>Email me a sign-in link instead</Text>

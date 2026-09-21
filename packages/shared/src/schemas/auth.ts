@@ -92,3 +92,11 @@ export const signupVerify = z.object({
 })
 
 export const signupResend = z.object({ signupId: z.string().uuid() })
+
+/** Google sign-in: an ID token from the client, plus the device to bind. */
+export const ssoSignIn = z.object({
+  idToken: z.string().min(20),
+  deviceId: z.string().min(8).max(128),
+  deviceName: z.string().max(120).optional(),
+  platform: z.enum(['ios', 'android', 'web']).default('web'),
+})

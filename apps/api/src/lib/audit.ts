@@ -46,6 +46,7 @@ export type AuditAction =
   | 'org.onboarding_completed'
   | 'policy.removed'
   | 'auth.password_reset'
+  | 'auth.sso_signin'
   | 'auth.password_changed'
   | 'policy.uploaded'
   | 'org.provisioned'

@@ -301,3 +301,112 @@ ${link}
 The setup wizard walks you through your company details, leave policy, managers and team.`,
   }
 }
+
+/**
+ * Two mails for a new team member, sent together. The first says what
+ * Quanti is; the second is the one they keep — their sign-in and the
+ * temporary password. Split so the credentials mail is short enough to
+ * read on a phone and forward to nobody.
+ */
+export function memberWelcomeEmail(firstName: string, orgName: string): EmailMessage {
+  return {
+    to: '',
+    subject: `Welcome to Quanti HR, ${firstName}`,
+    html: shell(
+      `Welcome, ${firstName}`,
+      `<p style="font-size:15px;line-height:23px;color:#22333f;margin:0 0 16px;">
+         <strong>${orgName}</strong> runs its HR on Quanti. This is where you will check in,
+         book leave, read your payslips, keep your documents, plan your training and ask
+         questions about company policy — from your phone, with no forms and no waiting.
+       </p>
+       <p style="font-size:15px;line-height:23px;color:#22333f;margin:0 0 16px;">
+         A second email is on its way with your sign-in details. Install the Quanti HR app,
+         sign in once, and choose your own password. After that your fingerprint or face
+         is enough.
+       </p>
+       <p style="font-size:13px;line-height:20px;color:#6b7f8d;margin:0;">
+         ${orgName} can see your leave, attendance and payroll data. It cannot see your
+         location outside a check-in, or anything else on your phone.
+       </p>`,
+      `You are receiving this because ${orgName} added you to its team on Quanti HR.`,
+    ),
+    text: `Welcome, ${firstName}
+
+${orgName} runs its HR on Quanti. This is where you will check in, book leave, read your payslips, keep your documents, plan your training and ask questions about company policy.
+
+A second email is on its way with your sign-in details. Install the Quanti HR app, sign in once, and choose your own password.
+
+${orgName} can see your leave, attendance and payroll data. It cannot see your location outside a check-in, or anything else on your phone.`,
+  }
+}
+
+export function memberCredentialsEmail(input: {
+  firstName: string
+  orgName: string
+  email: string
+  temporaryPassword: string
+  offerLetter: boolean
+  appUrl: string
+}): EmailMessage {
+  const offer = input.offerLetter
+    ? `<p style="font-size:15px;line-height:23px;color:#22333f;margin:20px 0 0;">
+         <strong>Your offer letter is waiting in the app.</strong> Read it and acknowledge it
+         to complete your onboarding — your acknowledgement is recorded with the date.
+       </p>`
+    : ''
+  return {
+    to: '',
+    subject: `You have been added to ${input.orgName} on Quanti HR`,
+    html: shell(
+      `You are on the team`,
+      `<p style="font-size:15px;line-height:23px;color:#22333f;margin:0 0 20px;">
+         Sign in to the Quanti HR app with these. You will be asked to choose your own
+         password the first time; this one stops working after that.
+       </p>
+       <table style="border-collapse:collapse;font-size:15px;color:#22333f;">
+         <tr><td style="padding:4px 16px 4px 0;color:#6b7f8d;">Email</td><td style="padding:4px 0;"><strong>${input.email}</strong></td></tr>
+         <tr><td style="padding:4px 16px 4px 0;color:#6b7f8d;">Temporary password</td>
+             <td style="padding:4px 0;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:18px;letter-spacing:2px;"><strong>${input.temporaryPassword}</strong></td></tr>
+       </table>
+       ${offer}
+       <p style="font-size:13px;line-height:20px;color:#6b7f8d;margin:20px 0 0;">
+         On a computer you can also use ${input.appUrl}.
+       </p>`,
+      `Keep this email to yourself. If you did not expect it, tell ${input.orgName}'s HR team.`,
+    ),
+    text: `You are on the team
+
+Sign in to the Quanti HR app with these. You will be asked to choose your own password the first time; this one stops working after that.
+
+Email: ${input.email}
+Temporary password: ${input.temporaryPassword}
+${input.offerLetter ? '\nYour offer letter is waiting in the app. Read it and acknowledge it to complete your onboarding.\n' : ''}
+On a computer you can also use ${input.appUrl}.
+
+Keep this email to yourself.`,
+  }
+}
+
+export function passwordResetEmail(firstName: string, temporaryPassword: string): EmailMessage {
+  return {
+    to: '',
+    subject: 'Your Quanti HR password was reset',
+    html: shell(
+      `A new temporary password, ${firstName}`,
+      `<p style="font-size:15px;line-height:23px;color:#22333f;margin:0 0 20px;">
+         Your HR team reset your password. Sign in with this one and you will be asked to
+         choose your own straight away.
+       </p>
+       <p style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:20px;letter-spacing:2px;
+                 color:#06111A;background:#f4f6f8;padding:12px 16px;border-radius:8px;display:inline-block;margin:0;">
+         ${temporaryPassword}
+       </p>`,
+      `If you did not ask for this, tell your HR team — the old password no longer works.`,
+    ),
+    text: `Your HR team reset your Quanti HR password. Sign in with this temporary password and choose your own straight away:
+
+${temporaryPassword}
+
+If you did not ask for this, tell your HR team.`,
+  }
+}

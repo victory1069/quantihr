@@ -67,6 +67,16 @@ afterAll(async () => {
   await db.close()
 })
 
+/** The temporary password only ever reaches the person — read it from their mail. */
+const mailedPassword = async (email: string): Promise<string> => {
+  // Mails go after the reply; give the loop a tick.
+  await new Promise((r) => setTimeout(r, 30))
+  const mail = [...sent].reverse().find((m) => m.to === email && /temporary password/i.test(m.text))
+  const match = mail?.text.match(/([A-Z2-9]{4}-[A-Z2-9]{4}-[A-Z2-9]{4})/)
+  if (!match) throw new Error(`no credentials mail for ${email}`)
+  return match[1]!
+}
+
 const signIn = (email: string, password: string, deviceId = 'test-phone-1') =>
   app.inject({
     method: 'POST',
@@ -145,8 +155,11 @@ describe('creating an account issues a temporary password', () => {
       },
     })
     expect(created.statusCode).toBe(201)
-    const temp = created.json().temporaryPassword as string
-    expect(temp).toBeTruthy()
+    // HR is told the mail went, and never sees the password itself.
+    expect(created.json().credentialsEmailed).toBe(true)
+    expect(created.json().temporaryPassword).toBeUndefined()
+    const temp = await mailedPassword('bisi@acme.test')
+    expect(sent.filter((m) => m.to === 'bisi@acme.test')).toHaveLength(2)
 
     const again = await app.inject({
       method: 'POST',
@@ -163,7 +176,7 @@ describe('creating an account issues a temporary password', () => {
         roles: ['employee'],
       },
     })
-    expect(again.json().temporaryPassword).toBeNull()
+    expect(again.json().credentialsEmailed).toBe(false)
     // The original still works: the update did not touch the credential.
     expect((await signIn('bisi@acme.test', temp)).statusCode).toBe(200)
   })
@@ -182,9 +195,10 @@ describe('creating an account issues a temporary password', () => {
       },
     })
     expect(res.statusCode).toBe(200)
-    const creds = res.json().credentials as { email: string; temporaryPassword: string }[]
+    const creds = res.json().credentials as { email: string; temporaryPassword?: string }[]
     expect(creds.map((c) => c.email).sort()).toEqual(['dayo@acme.test', 'kemi@acme.test'])
-    expect((await signIn('kemi@acme.test', creds.find((c) => c.email === 'kemi@acme.test')!.temporaryPassword)).statusCode).toBe(200)
+    expect(creds.every((c) => c.temporaryPassword === undefined)).toBe(true)
+    expect((await signIn('kemi@acme.test', await mailedPassword('kemi@acme.test'))).statusCode).toBe(200)
   })
 })
 
@@ -208,7 +222,8 @@ describe('signing in', () => {
       url: `/v1/admin/employees/${org.employeeId}/reset-password`,
       headers: bearer(hrToken),
     })
-    const temp = reset.json().temporaryPassword as string
+    expect(reset.json().temporaryPassword).toBeUndefined()
+    const temp = await mailedPassword('staff@acme.test')
 
     const first = await signIn('staff@acme.test', temp, 'staff-phone-a')
     expect(first.json().deviceReviewRequired).toBe(false)
@@ -234,7 +249,7 @@ describe('the forced change', () => {
       url: `/v1/admin/employees/${org.managerEmployeeId}/reset-password`,
       headers: bearer(hrToken),
     })
-    const temp = reset.json().temporaryPassword as string
+    const temp = await mailedPassword('manager@acme.test')
     const session = (await signIn('manager@acme.test', temp, 'manager-phone')).json()
     expect(session.mustChangePassword).toBe(true)
 
@@ -322,7 +337,7 @@ describe('changing an employee email', () => {
         roles: ['employee'],
       },
     })
-    const temp = created.json().temporaryPassword as string
+    const temp = await mailedPassword('tunde@acme.test')
     const before = await db.lookup.userByEmail('tunde@acme.test')
 
     const moved = await app.inject({
@@ -342,7 +357,7 @@ describe('changing an employee email', () => {
     })
     expect(moved.statusCode).toBe(201)
     // No new credential: the account moved with the address.
-    expect(moved.json().temporaryPassword).toBeNull()
+    expect(moved.json().credentialsEmailed).toBe(false)
     const after = await db.lookup.userByEmail('tunde.bello@gmail.test')
     expect(after?.userId).toBe(before?.userId)
     expect(await db.lookup.userByEmail('tunde@acme.test')).toBeNull()
@@ -368,5 +383,42 @@ describe('changing an employee email', () => {
       },
     })
     expect(res.statusCode).toBe(409)
+  })
+})
+
+describe('hiring before the start date', () => {
+  it('files the offer letter on the record and asks for it in the welcome', async () => {
+    sent.length = 0
+    const created = await app.inject({
+      method: 'POST',
+      url: '/v1/admin/employees',
+      headers: bearer(hrToken),
+      payload: {
+        employeeNumber: 'QH-960',
+        firstName: 'Sade',
+        lastName: 'Bakare',
+        email: 'sade@acme.test',
+        startDate: '2026-11-01',
+        employmentType: 'full_time',
+        status: 'active',
+        roles: ['employee'],
+        offerLetter: {
+          filename: 'offer.pdf',
+          contentType: 'application/pdf',
+          contentBase64: Buffer.from('%PDF-1.4 offer').toString('base64'),
+        },
+      },
+    })
+    expect(created.statusCode).toBe(201)
+    const temp = await mailedPassword('sade@acme.test')
+    const creds = sent.find((m) => m.to === 'sade@acme.test' && m.text.includes(temp))
+    expect(creds?.text).toContain('offer letter')
+
+    const session = await signIn('sade@acme.test', temp, 'sade-phone-1')
+    const docs = await app.inject({ method: 'GET', url: '/v1/documents', headers: bearer(session.json().accessToken) })
+    const letter = docs.json().documents.find((d: { type: string }) => d.type === 'letter')
+    expect(letter?.name).toContain('Offer letter')
+    expect(letter?.requiresAcknowledgement).toBe(true)
+    expect(letter?.acknowledgedAt).toBeNull()
   })
 })

@@ -508,6 +508,7 @@
         </div>
       </form>
       <div id="signin-msg"></div>
+      <div id="g-signin" style="margin-top:14px"></div>
       <p class="hint" style="margin:16px 0 0">New company? <a href="#" id="go-signup">Create your account</a></p>
     </div>
   </div>
@@ -743,6 +744,47 @@ function deviceId() {
 $('#sign-out').addEventListener('click', () => {
   store.access = null; store.refresh = null; location.reload()
 })
+// --- Google sign-in ----------------------------------------------------------
+//
+// Identity only: Google says who you are, the API checks HR has added you.
+// The button appears only when a deployment has configured a client id; the
+// placeholder below is replaced by the server when it serves this page.
+
+const GOOGLE_CLIENT_ID = '__GOOGLE_SSO_WEB_CLIENT_ID__'
+
+async function signInWithGoogle(credential) {
+  const box = $('#signin-msg')
+  box.innerHTML = ''
+  try {
+    const s = await req('/v1/auth/sso/google', {
+      method: 'POST',
+      body: { idToken: credential, deviceId: deviceId(), deviceName: 'HR Console', platform: 'web' },
+    })
+    store.access = s.accessToken; store.refresh = s.refreshToken
+    await boot()
+  } catch (err) {
+    box.innerHTML = notice('bad', err.body?.details?.reason === 'not_invited'
+      ? err.message
+      : formatError(err))
+  }
+}
+
+if (GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith('__')) {
+  const gsi = document.createElement('script')
+  gsi.src = 'https://accounts.google.com/gsi/client'
+  gsi.async = true
+  gsi.onload = () => {
+    window.google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: (r) => void signInWithGoogle(r.credential),
+    })
+    window.google.accounts.id.renderButton($('#g-signin'), {
+      theme: 'outline', size: 'large', width: 376, text: 'continue_with', shape: 'pill',
+    })
+  }
+  document.head.appendChild(gsi)
+}
+
 // --- Create a company -------------------------------------------------------
 
 const signup = { id: null, email: '', password: '' }
@@ -1009,42 +1051,22 @@ function openModal({ title, body, confirmLabel, onConfirm }) {
 }
 
 /**
- * Temporary passwords are shown once, here, and never again — they are
- * hashed the moment they are issued. HR copies them out or hands them over
- * on paper; the reset button on the employee row is the recovery path.
+ * Credentials go to the person, never to HR. What HR sees is who was mailed.
+ * The reset button on the employee row is the recovery path.
  */
-function showCredentials(list) {
-  const rows = list.map((c) => ({
-    number: c.employeeNumber ?? '',
-    name: [c.firstName, c.lastName].filter(Boolean).join(' '),
-    email: c.email ?? '',
-    password: c.temporaryPassword,
-  }))
+function showMailed(list) {
+  const names = list.map((c) => c.email ?? [c.firstName, c.lastName].filter(Boolean).join(' '))
   const body = el(`<div>
     <p class="hint" style="margin-top:0">
-      ${rows.length === 1 ? 'This is the only time it is shown.' : `${rows.length} accounts were created. This is the only time these are shown.`}
-      Each person is asked to choose their own password the first time they sign in.
+      ${names.length === 1
+        ? `Two emails are on their way to <strong>${esc(names[0])}</strong>: a welcome, and their sign-in details with a temporary password.`
+        : `${names.length} people have been emailed a welcome and their sign-in details.`}
+      Each person chooses their own password the first time they sign in. The temporary one is never shown here.
     </p>
-    <div class="table-wrap"><table>
-      <thead><tr><th>#</th><th>Name</th><th>Email</th><th>Temporary password</th></tr></thead>
-      <tbody>${rows.map((r) => `<tr>
-        <td>${esc(r.number)}</td><td>${esc(r.name)}</td><td>${esc(r.email)}</td>
-        <td><code class="cred">${esc(r.password)}</code></td>
-      </tr>`).join('')}</tbody>
-    </table></div>
-    <div id="cred-msg"></div>
+    ${names.length > 1 ? `<ul style="margin:0;padding-left:18px">${names.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
   </div>`)
-  const { scrim } = openModal({
-    title: rows.length === 1 ? 'Temporary password' : 'Temporary passwords',
-    body,
-    confirmLabel: 'Copy to clipboard',
-    onConfirm: async () => {
-      const text = rows.map((r) => `${r.email}\t${r.password}`).join('\n')
-      try { await navigator.clipboard.writeText(text); $('#cred-msg', body).innerHTML = notice('ok', 'Copied.') }
-      catch { $('#cred-msg', body).innerHTML = notice('warn', 'Your browser blocked the clipboard — select and copy from the table.') }
-    },
-  })
-  scrim.querySelector('[data-act="cancel"]').textContent = 'Done'
+  const { scrim } = openModal({ title: 'Sign-in details sent', body, confirmLabel: 'Done', onConfirm: (close) => close() })
+  scrim.querySelector('[data-act="cancel"]').remove()
 }
 
 const VIEWS = {}
@@ -1054,6 +1076,7 @@ const WIZARD = [
   { id: 'leave',      label: 'Leave',      blurb: 'The types of leave you offer.' },
   { id: 'handbook',   label: 'Policies',   blurb: 'What the assistant answers from.' },
   { id: 'managers',   label: 'Managers',   blurb: 'Who approves and reviews.' },
+  { id: 'departments', label: 'Departments', blurb: 'Teams and their heads.' },
   { id: 'organogram', label: 'Organogram', blurb: 'Who reports to whom.' },
   { id: 'team',       label: 'Team',       blurb: 'Everyone else.' },
 ]
@@ -1068,7 +1091,7 @@ VIEWS.setup = async () => {
     <div class="page-head">
       <div>
         <h2>Set up ${esc(ob.organisation.name)}</h2>
-        <p class="lede">Six steps, and the dashboard opens when they are done. Everything here can be changed later from the sidebar.</p>
+        <p class="lede">Seven steps, and the dashboard opens when they are done. Everything here can be changed later from the sidebar.</p>
       </div>
     </div>
     <div id="wiz-missing"></div>
@@ -1284,7 +1307,7 @@ VIEWS.setup = async () => {
         <p class="hint">
           The people who approve leave, review attendance and host meetings for their teams.
           Add them first: everyone you onboard after this reports to one of them.
-          Each gets an email and a temporary password.
+          Each gets a welcome email and their sign-in details.
         </p>
         ${list.length ? `<table><thead><tr><th>#</th><th>Name</th><th>Email</th><th>Title</th></tr></thead><tbody>${
           list.map((e) => `<tr><td>${esc(e.employeeNumber)}</td><td>${esc(e.firstName)} ${esc(e.lastName)}</td><td>${esc(e.email)}</td><td>${esc(e.jobTitle ?? '—')}</td></tr>`).join('')
@@ -1317,13 +1340,67 @@ VIEWS.setup = async () => {
           managerId: me?.id ?? null,
         }})
         await refreshReference(); state.onboarding = await req('/v1/admin/onboarding'); paintMissing(); await managers()
-        if (saved.temporaryPassword) showCredentials([saved])
+        if (saved.credentialsEmailed) showMailed([saved])
       } catch (e) { $('#m-msg', body).innerHTML = notice('bad', formatError(e)) }
     })
     body.querySelector('[data-done="managers"]')?.addEventListener('click', () => markDone('managers'))
   }
 
-  // ---- Step 5: organogram --------------------------------------------------------
+  // ---- Step 5: departments --------------------------------------------------------
+  const departmentsStep = async () => {
+    const depts = state.departments
+    const heads = state.employees.filter(isManager)
+    const headName = (id) => { const h = heads.find((x) => x.id === id); return h ? `${h.firstName} ${h.lastName}` : '—' }
+    body.innerHTML = `
+      <div class="card">
+        <h3>Departments and their heads</h3>
+        <p class="hint">
+          Optional, but worth doing now: coverage rules, reports and the calendar group by department,
+          and a department head is who a request escalates to when its manager is away.
+        </p>
+        ${depts.length ? `<table><thead><tr><th>Department</th><th>Head</th><th></th></tr></thead><tbody>${
+          depts.map((d) => `<tr>
+            <td>${esc(d.name)}</td>
+            <td><select data-dept="${d.id}" class="dept-head">
+              <option value="">— none —</option>
+              ${heads.map((h) => `<option value="${h.id}" ${d.headEmployeeId === h.id ? 'selected' : ''}>${esc(h.firstName)} ${esc(h.lastName)}</option>`).join('')}
+            </select></td>
+            <td class="muted" style="font-size:12px">${d.headEmployeeId ? 'Head: ' + esc(headName(d.headEmployeeId)) : ''}</td>
+          </tr>`).join('')
+        }</tbody></table>
+        <div class="actions"><button class="btn secondary" id="d-save">Save heads</button></div>` : '<p class="muted">No departments yet.</p>'}
+        <div class="grid" style="margin-top:12px">
+          <div><label>New department</label><input id="d-name" placeholder="Operations" /></div>
+          <div><label>Head (optional)</label><select id="d-head"><option value="">— pick later —</option>${heads.map((h) => `<option value="${h.id}">${esc(h.firstName)} ${esc(h.lastName)}</option>`).join('')}</select></div>
+        </div>
+        <div class="actions"><button class="btn secondary" id="d-add">Add department</button></div>
+        <div id="d-msg"></div>
+      </div>
+      ${foot('departments', { label: depts.length ? 'Continue' : 'Continue without departments' })}`
+
+    $('#d-add', body).addEventListener('click', async () => {
+      try {
+        await req('/v1/admin/departments', { method: 'POST', body: {
+          name: $('#d-name', body).value.trim(),
+          headEmployeeId: $('#d-head', body).value || null,
+        }})
+        await refreshReference(); await departmentsStep()
+      } catch (e) { $('#d-msg', body).innerHTML = notice('bad', formatError(e)) }
+    })
+    $('#d-save', body)?.addEventListener('click', async () => {
+      try {
+        for (const sel of body.querySelectorAll('select.dept-head')) {
+          const d = state.departments.find((x) => x.id === sel.dataset.dept)
+          if ((d.headEmployeeId ?? null) === (sel.value || null)) continue
+          await req('/v1/admin/departments', { method: 'POST', body: { id: d.id, name: d.name, headEmployeeId: sel.value || null } })
+        }
+        await refreshReference(); await departmentsStep()
+      } catch (e) { $('#d-msg', body).innerHTML = notice('bad', formatError(e)) }
+    })
+    body.querySelector('[data-done="departments"]')?.addEventListener('click', () => markDone('departments'))
+  }
+
+  // ---- Step 6: organogram --------------------------------------------------------
   const organogram = async () => {
     const people = state.employees.filter((e) => e.id !== me?.id)
     const heads = state.employees.filter(isManager)
@@ -1335,10 +1412,14 @@ VIEWS.setup = async () => {
           Every person needs a manager — that is where their leave requests go and who sees their attendance.
           Managers report to you or to another manager. You are the top of the tree.
         </p>
-        ${people.length ? `<table><thead><tr><th>Person</th><th>Role</th><th>Reports to</th></tr></thead><tbody>${
+        ${people.length ? `<table><thead><tr><th>Person</th><th>Role</th><th>Department</th><th>Reports to</th></tr></thead><tbody>${
           people.map((e) => `<tr>
             <td>${esc(e.firstName)} ${esc(e.lastName)}<div class="muted" style="font-size:12px">${esc(e.jobTitle ?? e.employeeNumber)}</div></td>
             <td>${isManager(e) ? '<span class="pill neutral">manager</span>' : ''}</td>
+            <td><select data-emp="${e.id}" class="org-dept">
+              <option value="">—</option>
+              ${state.departments.map((d) => `<option value="${d.id}" ${e.departmentId === d.id ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}
+            </select></td>
             <td><select data-emp="${e.id}" class="org-mgr">
               <option value="">— nobody yet —</option>
               ${heads.filter((h) => h.id !== e.id).map((h) => `<option value="${h.id}" ${e.managerId === h.id ? 'selected' : ''}>${esc(h.firstName)} ${esc(h.lastName)}${h.id === me?.id ? ' (you)' : ''}</option>`).join('')}
@@ -1356,10 +1437,11 @@ VIEWS.setup = async () => {
         for (const sel of body.querySelectorAll('select.org-mgr')) {
           const e = state.employees.find((x) => x.id === sel.dataset.emp)
           const managerId = sel.value || null
-          if ((e.managerId ?? null) === managerId) continue
+          const departmentId = body.querySelector(`select.org-dept[data-emp="${e.id}"]`)?.value || null
+          if ((e.managerId ?? null) === managerId && (e.departmentId ?? null) === departmentId) continue
           await req('/v1/admin/employees', { method: 'POST', body: {
             employeeNumber: e.employeeNumber, firstName: e.firstName, lastName: e.lastName, email: e.email,
-            jobTitle: e.jobTitle ?? null, startDate: e.startDate, departmentId: e.departmentId ?? null,
+            jobTitle: e.jobTitle ?? null, startDate: e.startDate, departmentId,
             locationId: e.locationId ?? null, managerId, workScheduleId: e.workScheduleId ?? null,
             employmentType: e.employmentType, status: e.status, roles: e.roles?.length ? e.roles : ['employee'],
           }})
@@ -1381,7 +1463,7 @@ VIEWS.setup = async () => {
           ${n > 0 ? `${n} ${n === 1 ? 'person is' : 'people are'} in.` : 'Nobody but you is in yet.'}
           Bulk import takes a spreadsheet; the Employees page adds people one at a time. Set each
           person's manager as you go — or come back to the Organogram step afterwards.
-          Each new account comes with a temporary password, shown once for you to pass on.
+          Everyone you add is emailed a welcome and their sign-in details; you never handle passwords.
         </p>
         <div class="actions">
           <button class="btn secondary" id="s-import">Open bulk import</button>
@@ -1419,6 +1501,7 @@ VIEWS.setup = async () => {
     else if (current === 'leave') await leave()
     else if (current === 'handbook') await handbook()
     else if (current === 'managers') await managers()
+    else if (current === 'departments') await departmentsStep()
     else if (current === 'organogram') await organogram()
     else await team()
   }
@@ -1740,6 +1823,7 @@ VIEWS.employees = async () => {
       <div><label>Schedule</label><select id="f-sched">${state.schedules.map((s) => `<option value="${s.id}" ${existing?.workScheduleId === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>
       <div><label>Employment type</label><select id="f-type">${['full_time','part_time','contract','intern'].map((t) => `<option value="${t}" ${existing?.employmentType === t ? 'selected' : ''}>${t.replace('_',' ')}</option>`).join('')}</select></div>
       <div><label>Status</label><select id="f-status">${['active','on_leave','suspended','terminated'].map((t) => `<option value="${t}" ${(existing?.status ?? 'active') === t ? 'selected' : ''}>${t.replace('_',' ')}</option>`).join('')}</select></div>
+      ${existing ? '' : `<div><label>Offer letter (optional)</label><input id="f-offer" type="file" accept=".pdf,image/*" /><p class="hint" style="margin:4px 0 0">For a hire who has not started. It goes with their welcome email and waits in the app to be acknowledged.</p></div>`}
       <div><label>Roles</label><select id="f-roles" multiple size="4">${['employee','manager','hr_admin','owner'].map((r) => `<option value="${r}" ${(existing?.roles ?? ['employee']).includes(r) ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
     </div>
     <div id="emp-msg"></div>
@@ -1768,11 +1852,19 @@ VIEWS.employees = async () => {
           status: $('#f-status', body).value,
           roles: roles.length ? roles : ['employee'],
         }
+        const offer = $('#f-offer', body)?.files?.[0]
+        if (offer) {
+          if (offer.size > 15_000_000) { $('#emp-msg', body).innerHTML = notice('bad', 'The offer letter is over 15MB.'); return }
+          const buf = new Uint8Array(await offer.arrayBuffer())
+          let binary = ''
+          for (let i = 0; i < buf.length; i += 1) binary += String.fromCharCode(buf[i])
+          payload.offerLetter = { filename: offer.name, contentType: offer.type || 'application/octet-stream', contentBase64: btoa(binary) }
+        }
         try {
           const saved = await req('/v1/admin/employees', { method: 'POST', body: payload })
           close()
           await show('employees')
-          if (saved.temporaryPassword) showCredentials([saved])
+          if (saved.credentialsEmailed) showMailed([saved])
         } catch (e) {
           $('#emp-msg', body).innerHTML = notice('bad', formatError(e))
         }
@@ -1787,8 +1879,8 @@ VIEWS.employees = async () => {
       if (!confirm(`Issue a new temporary password for ${emp.firstName} ${emp.lastName}? Their current password will stop working.`)) return
       b.disabled = true
       try {
-        const r = await req(`/v1/admin/employees/${emp.id}/reset-password`, { method: 'POST' })
-        showCredentials([{ ...emp, temporaryPassword: r.temporaryPassword }])
+        await req(`/v1/admin/employees/${emp.id}/reset-password`, { method: 'POST' })
+        showMailed([emp])
       } catch (e) { alert(formatError(e)) }
       finally { b.disabled = false }
     })
@@ -1905,7 +1997,7 @@ QH-102,Grace,Hopper,grace@kanjufoods.test,2026-02-01,Engineer</textarea>
     try {
       const result = await req('/v1/admin/employees/import', { method: 'POST', body: { mode: 'commit', rows: lastRows } })
       render(result)
-      if (result.credentials?.length) showCredentials(result.credentials)
+      if (result.credentials?.length) showMailed(result.credentials)
     } catch (e) { $('#import-msg', section).innerHTML = notice('bad', formatError(e)) }
   })
 

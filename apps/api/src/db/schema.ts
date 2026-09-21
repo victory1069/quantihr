@@ -73,6 +73,7 @@ export const departments = pgTable('departments', {
   orgId: orgId(),
   name: text('name').notNull(),
   parentDepartmentId: uuid('parent_department_id'),
+  headEmployeeId: uuid('head_employee_id'),
   createdAt: createdAt(),
 })
 

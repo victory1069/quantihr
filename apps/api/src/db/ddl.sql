@@ -103,6 +103,10 @@ create table if not exists departments (
   org_id               uuid not null references organisations(id) on delete cascade,
   name                 text not null,
   parent_department_id uuid references departments(id) on delete set null,
+  -- The department head: a manager, set during setup or later. Not a
+  -- foreign key to employees because employees references departments and
+  -- the two tables would then have to be created in each other's order.
+  head_employee_id     uuid,
   created_at           timestamptz not null default now()
 );
 
@@ -848,6 +852,8 @@ create index if not exists training_items_dates_idx on training_items(org_id, st
 -- ---------------------------------------------------------------------------
 -- Additive migrations
 -- ---------------------------------------------------------------------------
+
+alter table departments add column if not exists head_employee_id uuid;
 
 -- `create table if not exists` is skipped entirely when the table already
 -- exists, so a column added to a CREATE above never reaches a database that was
