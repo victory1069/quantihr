@@ -57,6 +57,11 @@ const PUBLIC_ROUTES = new Set([
   // The password door. Rate-limited per IP in the route; the change endpoint
   // is deliberately NOT here — it needs the session the sign-in issued.
   'POST:/v1/auth/password',
+  // Self-serve company signup: nothing exists to authenticate against yet.
+  // Rate-limited per address and per IP in the route.
+  'POST:/v1/signup/start',
+  'POST:/v1/signup/verify',
+  'POST:/v1/signup/resend',
   // Pre-tenant sign-up lookups; rate-limited in the route.
   'GET:/v1/auth/invite',
   'POST:/v1/auth/otp/request',

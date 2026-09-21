@@ -760,6 +760,33 @@ create table if not exists policy_documents (
 create index if not exists policy_documents_org_idx on policy_documents(org_id, created_at desc);
 
 -- ---------------------------------------------------------------------------
+-- Self-serve signups
+--
+-- Pre-tenant by definition: nothing here belongs to an organisation until
+-- the code is verified and the organisation is created. Deliberately outside
+-- row-level security, and read only through the app's own lookup layer.
+-- The password is hashed the moment it is submitted; it is never stored as
+-- typed, even for the fifteen minutes the code is valid.
+-- ---------------------------------------------------------------------------
+
+create table if not exists signups (
+  id             uuid primary key default gen_random_uuid(),
+  email          text not null,
+  org_name       text not null,
+  first_name     text not null,
+  last_name      text not null,
+  password_hash  text not null,
+  code_hash      text not null,
+  expires_at     timestamptz not null,
+  attempts       integer not null default 0,
+  verified_at    timestamptz,
+  org_id         uuid,
+  created_at     timestamptz not null default now()
+);
+
+create index if not exists signups_email_idx on signups(email, created_at desc);
+
+-- ---------------------------------------------------------------------------
 -- Learning & development
 --
 -- A plan is one employee's intended training for a month or a quarter,

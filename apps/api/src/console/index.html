@@ -508,6 +508,7 @@
         </div>
       </form>
       <div id="signin-msg"></div>
+      <p class="hint" style="margin:16px 0 0">New company? <a href="#" id="go-signup">Create your account</a></p>
     </div>
   </div>
 
@@ -528,6 +529,60 @@
 </div>
 
 <!-- App -->
+<div id="signup-view" class="signin-shell hidden">
+  <div class="signin-bg"><div class="signin-gradient"></div></div>
+  <div class="signin-panel">
+    <div class="signin-card">
+      <div class="signin-mark">
+        <span class="dot"></span><span class="dot accent"></span>
+        <span>Quanti HR</span>
+      </div>
+      <h1>Create your company</h1>
+      <p class="hint">Sign up with your company's HR mailbox — an address that starts with <strong>hr</strong>. We send a code there to confirm it is yours.</p>
+      <form id="signup-form" novalidate>
+        <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
+          <div><label for="su-first">Your first name</label><input id="su-first" autocomplete="given-name" /></div>
+          <div><label for="su-last">Last name</label><input id="su-last" autocomplete="family-name" /></div>
+        </div>
+        <label for="su-org" style="margin-top:10px">Company name</label>
+        <input id="su-org" placeholder="Northbridge Logistics" autocomplete="organization" />
+        <label for="su-email" style="margin-top:10px">HR email</label>
+        <input id="su-email" type="email" placeholder="hr@yourcompany.com" autocomplete="username" />
+        <label for="su-password" style="margin-top:10px">Password</label>
+        <input id="su-password" type="password" placeholder="At least 10 characters" autocomplete="new-password" />
+        <div class="actions">
+          <button class="btn" id="su-submit" type="submit">Send me a code</button>
+          <button class="btn ghost" id="su-back" type="button">I have an account</button>
+        </div>
+      </form>
+      <div id="signup-msg"></div>
+    </div>
+  </div>
+</div>
+
+<div id="code-view" class="signin-shell hidden">
+  <div class="signin-bg"><div class="signin-gradient"></div></div>
+  <div class="signin-panel">
+    <div class="signin-card">
+      <div class="signin-mark">
+        <span class="dot"></span><span class="dot accent"></span>
+        <span>Quanti HR</span>
+      </div>
+      <h1>Enter the code</h1>
+      <p class="hint" id="code-hint">We sent a 6-digit code to your HR address. It expires in 15 minutes.</p>
+      <form id="code-form" novalidate>
+        <label for="code-input">Code</label>
+        <input id="code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:24px;letter-spacing:8px;text-align:center" />
+        <div class="actions">
+          <button class="btn" id="code-submit" type="submit">Confirm and create</button>
+          <button class="btn ghost" id="code-resend" type="button">Send a new code</button>
+        </div>
+      </form>
+      <div id="code-msg"></div>
+    </div>
+  </div>
+</div>
+
 <div id="change-view" class="signin-shell hidden">
   <div class="signin-bg"><div class="signin-gradient"></div></div>
   <div class="signin-panel">
@@ -688,6 +743,72 @@ function deviceId() {
 $('#sign-out').addEventListener('click', () => {
   store.access = null; store.refresh = null; location.reload()
 })
+// --- Create a company -------------------------------------------------------
+
+const signup = { id: null, email: '', password: '' }
+const showShell = (id) => {
+  for (const v of ['#signin-view', '#signup-view', '#code-view', '#change-view']) $(v).classList.add('hidden')
+  $('#app-view').classList.add('hidden')
+  $(id).classList.remove('hidden')
+}
+
+$('#go-signup').addEventListener('click', (e) => { e.preventDefault(); showShell('#signup-view'); $('#su-first').focus() })
+$('#su-back').addEventListener('click', () => showShell('#signin-view'))
+
+$('#signup-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const box = $('#signup-msg')
+  box.innerHTML = ''
+  const payload = {
+    firstName: $('#su-first').value.trim(),
+    lastName: $('#su-last').value.trim(),
+    orgName: $('#su-org').value.trim(),
+    email: $('#su-email').value.trim(),
+    password: $('#su-password').value,
+  }
+  if (!payload.firstName || !payload.lastName || !payload.orgName || !payload.email || !payload.password) {
+    box.innerHTML = notice('bad', 'Every field is needed.'); return
+  }
+  $('#su-submit').disabled = true
+  try {
+    const r = await req('/v1/signup/start', { method: 'POST', body: payload })
+    signup.id = r.signupId; signup.email = payload.email; signup.password = payload.password
+    $('#code-hint').textContent = r.message
+    showShell('#code-view')
+    $('#code-msg').innerHTML = r.devCode ? notice('info', `Development: your code is ${r.devCode}`) : ''
+    $('#code-input').value = ''; $('#code-input').focus()
+  } catch (err) { box.innerHTML = notice('bad', formatError(err)) }
+  finally { $('#su-submit').disabled = false }
+})
+
+$('#code-resend').addEventListener('click', async () => {
+  const box = $('#code-msg')
+  try {
+    const r = await req('/v1/signup/resend', { method: 'POST', body: { signupId: signup.id } })
+    box.innerHTML = notice('info', r.message) + (r.devCode ? notice('info', `Development: your code is ${r.devCode}`) : '')
+  } catch (err) { box.innerHTML = notice('bad', formatError(err)) }
+})
+
+$('#code-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const box = $('#code-msg')
+  const code = $('#code-input').value.trim()
+  if (!/^\d{6}$/.test(code)) { box.innerHTML = notice('bad', 'Six digits.'); return }
+  $('#code-submit').disabled = true
+  try {
+    await req('/v1/signup/verify', { method: 'POST', body: { signupId: signup.id, code } })
+    // Straight in with the password they just chose; the wizard takes it from here.
+    const s = await req('/v1/auth/password', {
+      method: 'POST',
+      body: { email: signup.email, password: signup.password, deviceId: deviceId(), deviceName: 'HR Console', platform: 'web' },
+    })
+    store.access = s.accessToken; store.refresh = s.refreshToken
+    signup.password = ''
+    await boot()
+  } catch (err) { box.innerHTML = notice('bad', formatError(err)) }
+  finally { $('#code-submit').disabled = false }
+})
+
 $('#change-signout').addEventListener('click', () => {
   store.access = null; store.refresh = null; location.reload()
 })
@@ -760,7 +881,7 @@ async function boot() {
     return
   }
 
-  $('#signin-view').classList.add('hidden')
+  for (const v of ['#signin-view', '#signup-view', '#code-view']) $(v).classList.add('hidden')
 
   // A temporary password opens exactly one screen. Nothing of the org is
   // fetched or shown until it has been replaced.
@@ -774,9 +895,29 @@ async function boot() {
   $('#app-view').classList.remove('hidden')
   $('#org-name').textContent = state.me.config.org.name
 
+  // Setup is a gate, not a suggestion. Until it is complete the sidebar
+  // holds only the wizard and the two pages it hands off to; everything
+  // else appears the moment the org can actually run.
+  try {
+    state.onboarding = await req('/v1/admin/onboarding')
+  } catch {
+    state.onboarding = null
+  }
+  paintNav()
+  await show(state.onboarding && !state.onboarding.completedAt ? 'setup' : 'overview')
+}
+
+const SETUP_TABS = [
+  { id: 'setup',     label: 'Setup',       group: null, accent: '#5B4BE8' },
+  { id: 'employees', label: 'Employees',   group: 'Onboarding', accent: '#2C8FD6' },
+  { id: 'import',    label: 'Bulk import', group: 'Onboarding', accent: '#2C8FD6' },
+]
+const setupLocked = () => !!state.onboarding && !state.onboarding.completedAt
+
+function paintNav() {
   const nav = $('#nav'); nav.innerHTML = ''
   let lastGroup
-  for (const tab of TABS) {
+  for (const tab of setupLocked() ? SETUP_TABS : TABS) {
     if (tab.group && tab.group !== lastGroup) {
       nav.appendChild(el(`<div class="group">${esc(tab.group)}</div>`))
     }
@@ -788,19 +929,14 @@ async function boot() {
     b.addEventListener('click', () => show(tab.id))
     nav.appendChild(b)
   }
-  // A fresh org lands in setup. Anyone else lands where they always did; the
-  // wizard is reachable again from Settings if they want it.
-  try {
-    const ob = await req('/v1/admin/onboarding')
-    state.onboarding = ob
-    await show(ob.completedAt ? 'overview' : 'setup')
-  } catch {
-    await show('overview')
-  }
 }
 
 window.__show = (id) => show(id)
+document.addEventListener('click', (e) => {
+  if (e.target.closest?.('.back-to-setup')) { e.preventDefault(); void show('setup') }
+})
 async function show(tabId) {
+  if (setupLocked() && !SETUP_TABS.some((t) => t.id === tabId)) tabId = 'setup'
   for (const b of $('#nav').querySelectorAll('button.nav-item')) {
     b.setAttribute('aria-current', String(b.dataset.tab === tabId))
   }
@@ -914,26 +1050,28 @@ function showCredentials(list) {
 const VIEWS = {}
 
 const WIZARD = [
-  { id: 'basics',   label: 'Company',  blurb: 'Where and when people work.' },
-  { id: 'leave',    label: 'Leave',    blurb: 'The types of leave you offer.' },
-  { id: 'handbook', label: 'Policies', blurb: 'What the assistant answers from.' },
-  { id: 'staff',    label: 'Staff',    blurb: 'Bring the roster in.' },
+  { id: 'basics',     label: 'Company',    blurb: 'Where and when people work.' },
+  { id: 'leave',      label: 'Leave',      blurb: 'The types of leave you offer.' },
+  { id: 'handbook',   label: 'Policies',   blurb: 'What the assistant answers from.' },
+  { id: 'managers',   label: 'Managers',   blurb: 'Who approves and reviews.' },
+  { id: 'organogram', label: 'Organogram', blurb: 'Who reports to whom.' },
+  { id: 'team',       label: 'Team',       blurb: 'Everyone else.' },
 ]
 
 VIEWS.setup = async () => {
   await refreshReference()
   const ob = state.onboarding ?? (state.onboarding = await req('/v1/admin/onboarding'))
   const doneSet = new Set(ob.steps.filter((x) => x.done).map((x) => x.step))
-  let current = WIZARD.find((w) => !doneSet.has(w.id))?.id ?? 'staff'
+  let current = WIZARD.find((w) => !doneSet.has(w.id))?.id ?? 'team'
 
   const section = el(`<section>
     <div class="page-head">
       <div>
         <h2>Set up ${esc(ob.organisation.name)}</h2>
-        <p class="lede">Four steps. Each one can be changed later from the sidebar — this just gets you to a working org.</p>
+        <p class="lede">Six steps, and the dashboard opens when they are done. Everything here can be changed later from the sidebar.</p>
       </div>
-      ${ob.completedAt ? '' : `<button class="btn ghost" id="wiz-skip">Skip setup for now</button>`}
     </div>
+    <div id="wiz-missing"></div>
     <div class="wizard-rail" id="wiz-rail"></div>
     <div id="wiz-body"></div>
   </section>`)
@@ -1126,47 +1264,164 @@ VIEWS.setup = async () => {
     body.querySelector('[data-done="handbook"]')?.addEventListener('click', () => markDone('handbook'))
   }
 
-  // ---- Step 4: staff -----------------------------------------------------------
-  const staff = async () => {
-    const n = state.employees.length - 1
+  // ---- People helpers -------------------------------------------------------
+  const nextNumber = () => {
+    const nums = state.employees
+      .map((e) => Number((e.employeeNumber.match(/(\d+)$/) ?? [])[1]))
+      .filter((n) => Number.isFinite(n))
+    const prefix = (state.employees[0]?.employeeNumber.match(/^(.*?)(\d+)$/) ?? [])[1] ?? 'QH-'
+    return `${prefix}${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, '0')}`
+  }
+  const me = state.employees.find((e) => e.id === state.me.employee.id)
+  const isManager = (e) => (e.roles ?? []).includes('manager') || (e.roles ?? []).includes('owner')
+
+  // ---- Step 4: managers --------------------------------------------------------
+  const managers = async () => {
+    const list = state.employees.filter((e) => (e.roles ?? []).includes('manager'))
     body.innerHTML = `
       <div class="card">
-        <h3>Staff</h3>
+        <h3>Managers</h3>
         <p class="hint">
-          ${n > 0 ? `${n} employee(s) are in already.` : 'Nobody but you is in yet.'}
-          Bulk import takes a spreadsheet; the Employees page adds people one at a time.
+          The people who approve leave, review attendance and host meetings for their teams.
+          Add them first: everyone you onboard after this reports to one of them.
+          Each gets an email and a temporary password.
+        </p>
+        ${list.length ? `<table><thead><tr><th>#</th><th>Name</th><th>Email</th><th>Title</th></tr></thead><tbody>${
+          list.map((e) => `<tr><td>${esc(e.employeeNumber)}</td><td>${esc(e.firstName)} ${esc(e.lastName)}</td><td>${esc(e.email)}</td><td>${esc(e.jobTitle ?? '—')}</td></tr>`).join('')
+        }</tbody></table>` : '<p class="muted">No managers yet.</p>'}
+        <div class="grid" style="margin-top:12px">
+          <div><label>First name</label><input id="m-first" /></div>
+          <div><label>Last name</label><input id="m-last" /></div>
+          <div><label>Work email</label><input id="m-email" type="email" /></div>
+          <div><label>Job title</label><input id="m-title" placeholder="Operations Manager" /></div>
+          <div><label>Start date</label><input id="m-start" type="date" value="${new Date().toISOString().slice(0, 10)}" /></div>
+          <div><label>Employee number</label><input id="m-num" value="${esc(nextNumber())}" /></div>
+        </div>
+        <div class="actions"><button class="btn secondary" id="m-add">Add manager</button></div>
+        <div id="m-msg"></div>
+      </div>
+      ${foot('managers', { canContinue: list.length > 0, label: list.length > 0 ? 'Continue' : 'Add a manager to continue' })}`
+
+    $('#m-add', body).addEventListener('click', async () => {
+      try {
+        const saved = await req('/v1/admin/employees', { method: 'POST', body: {
+          employeeNumber: $('#m-num', body).value.trim(),
+          firstName: $('#m-first', body).value.trim(),
+          lastName: $('#m-last', body).value.trim(),
+          email: $('#m-email', body).value.trim(),
+          jobTitle: $('#m-title', body).value.trim() || null,
+          startDate: $('#m-start', body).value,
+          employmentType: 'full_time',
+          status: 'active',
+          roles: ['employee', 'manager'],
+          managerId: me?.id ?? null,
+        }})
+        await refreshReference(); state.onboarding = await req('/v1/admin/onboarding'); paintMissing(); await managers()
+        if (saved.temporaryPassword) showCredentials([saved])
+      } catch (e) { $('#m-msg', body).innerHTML = notice('bad', formatError(e)) }
+    })
+    body.querySelector('[data-done="managers"]')?.addEventListener('click', () => markDone('managers'))
+  }
+
+  // ---- Step 5: organogram --------------------------------------------------------
+  const organogram = async () => {
+    const people = state.employees.filter((e) => e.id !== me?.id)
+    const heads = state.employees.filter(isManager)
+    const unassigned = people.filter((e) => !e.managerId).length
+    body.innerHTML = `
+      <div class="card">
+        <h3>Who reports to whom</h3>
+        <p class="hint">
+          Every person needs a manager — that is where their leave requests go and who sees their attendance.
+          Managers report to you or to another manager. You are the top of the tree.
+        </p>
+        ${people.length ? `<table><thead><tr><th>Person</th><th>Role</th><th>Reports to</th></tr></thead><tbody>${
+          people.map((e) => `<tr>
+            <td>${esc(e.firstName)} ${esc(e.lastName)}<div class="muted" style="font-size:12px">${esc(e.jobTitle ?? e.employeeNumber)}</div></td>
+            <td>${isManager(e) ? '<span class="pill neutral">manager</span>' : ''}</td>
+            <td><select data-emp="${e.id}" class="org-mgr">
+              <option value="">— nobody yet —</option>
+              ${heads.filter((h) => h.id !== e.id).map((h) => `<option value="${h.id}" ${e.managerId === h.id ? 'selected' : ''}>${esc(h.firstName)} ${esc(h.lastName)}${h.id === me?.id ? ' (you)' : ''}</option>`).join('')}
+            </select></td>
+          </tr>`).join('')
+        }</tbody></table>` : '<p class="muted">Add managers and team members first; they appear here.</p>'}
+        <div class="actions"><button class="btn secondary" id="org-save">Save reporting lines</button></div>
+        <div id="org-msg">${unassigned > 0 ? notice('warn', `${unassigned} ${unassigned === 1 ? 'person has' : 'people have'} no manager yet.`) : ''}</div>
+      </div>
+      ${foot('organogram', { canContinue: people.length > 0 && unassigned === 0, label: unassigned > 0 ? 'Assign everyone to continue' : 'Continue' })}`
+
+    $('#org-save', body).addEventListener('click', async () => {
+      const msg = $('#org-msg', body); msg.innerHTML = ''
+      try {
+        for (const sel of body.querySelectorAll('select.org-mgr')) {
+          const e = state.employees.find((x) => x.id === sel.dataset.emp)
+          const managerId = sel.value || null
+          if ((e.managerId ?? null) === managerId) continue
+          await req('/v1/admin/employees', { method: 'POST', body: {
+            employeeNumber: e.employeeNumber, firstName: e.firstName, lastName: e.lastName, email: e.email,
+            jobTitle: e.jobTitle ?? null, startDate: e.startDate, departmentId: e.departmentId ?? null,
+            locationId: e.locationId ?? null, managerId, workScheduleId: e.workScheduleId ?? null,
+            employmentType: e.employmentType, status: e.status, roles: e.roles?.length ? e.roles : ['employee'],
+          }})
+        }
+        await refreshReference(); state.onboarding = await req('/v1/admin/onboarding'); paintMissing(); await organogram()
+      } catch (e) { msg.innerHTML = notice('bad', formatError(e)) }
+    })
+    body.querySelector('[data-done="organogram"]')?.addEventListener('click', () => markDone('organogram'))
+  }
+
+  // ---- Step 6: the rest of the team -------------------------------------------
+  const team = async () => {
+    const n = state.employees.length - 1
+    const missing = state.onboarding?.missing ?? []
+    body.innerHTML = `
+      <div class="card">
+        <h3>The rest of the team</h3>
+        <p class="hint">
+          ${n > 0 ? `${n} ${n === 1 ? 'person is' : 'people are'} in.` : 'Nobody but you is in yet.'}
+          Bulk import takes a spreadsheet; the Employees page adds people one at a time. Set each
+          person's manager as you go — or come back to the Organogram step afterwards.
           Each new account comes with a temporary password, shown once for you to pass on.
         </p>
         <div class="actions">
           <button class="btn secondary" id="s-import">Open bulk import</button>
-          <button class="btn ghost" id="s-one">Add one employee</button>
+          <button class="btn ghost" id="s-one">Add one person</button>
         </div>
       </div>
-      ${foot('staff', { label: n > 0 ? 'Finish setup' : 'Finish setup (add staff later)' })}`
+      ${missing.length ? `<div class="notice warn">Before the dashboard opens: ${missing.map((m) => esc(m.message)).join(' ')}</div>` : ''}
+      ${foot('team', { canContinue: missing.length === 0, label: missing.length === 0 ? 'Finish setup and open the dashboard' : 'Finish the steps above first' })}
+      <div id="t-msg"></div>`
 
     $('#s-import', body).addEventListener('click', () => show('import'))
     $('#s-one', body).addEventListener('click', () => show('employees'))
-    body.querySelector('[data-done="staff"]')?.addEventListener('click', async () => {
-      await req('/v1/admin/onboarding/steps/staff', { method: 'POST' })
-      await req('/v1/admin/onboarding/complete', { method: 'POST' })
-      state.onboarding = await req('/v1/admin/onboarding')
-      await show('overview')
+    body.querySelector('[data-done="team"]')?.addEventListener('click', async () => {
+      try {
+        await req('/v1/admin/onboarding/steps/team', { method: 'POST' })
+        await req('/v1/admin/onboarding/complete', { method: 'POST' })
+        state.onboarding = await req('/v1/admin/onboarding')
+        paintNav()
+        await show('overview')
+      } catch (e) { $('#t-msg', body).innerHTML = notice('bad', formatError(e)) }
     })
+  }
+
+  const paintMissing = () => {
+    const missing = state.onboarding?.missing ?? []
+    $('#wiz-missing', section).innerHTML = missing.length
+      ? `<div class="notice info" style="margin:0 0 16px">Still needed: ${missing.map((m) => esc(m.message)).join(' ')}</div>`
+      : `<div class="notice ok" style="margin:0 0 16px">Everything the dashboard needs is in place — finish on the Team step.</div>`
   }
 
   const paint = async () => {
     paintRail()
+    paintMissing()
     if (current === 'basics') await basics()
     else if (current === 'leave') await leave()
     else if (current === 'handbook') await handbook()
-    else await staff()
+    else if (current === 'managers') await managers()
+    else if (current === 'organogram') await organogram()
+    else await team()
   }
-
-  section.querySelector('#wiz-skip')?.addEventListener('click', async () => {
-    await req('/v1/admin/onboarding/complete', { method: 'POST' })
-    state.onboarding = await req('/v1/admin/onboarding')
-    await show('overview')
-  })
 
   await paint()
   return section
@@ -1437,6 +1692,7 @@ VIEWS.employees = async () => {
   const empName = (id) => { const e = state.employees.find((x) => x.id === id); return e ? `${e.firstName} ${e.lastName}` : '—' }
 
   const section = el(`<section>
+    ${setupLocked() ? '<p><a href="#" class="back-to-setup">‹ Back to setup</a></p>' : ''}
     <div class="page-head">
       <div>
         <h2>Employees</h2>
@@ -1547,6 +1803,7 @@ VIEWS.employees = async () => {
 
 VIEWS.import = async () => {
   const section = el(`<section>
+    ${setupLocked() ? '<p><a href="#" onclick="window.__show(\'setup\');return false">‹ Back to setup</a></p>' : ''}
     <h2>Bulk import</h2>
     <p class="lede">Upload a spreadsheet or paste CSV. Nothing is written until you have reviewed the preview and pressed Import.</p>
     <div class="card">

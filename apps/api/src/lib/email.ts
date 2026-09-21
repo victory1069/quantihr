@@ -244,3 +244,60 @@ ${temporaryPassword}
 You will be asked to choose your own password the first time you sign in.`,
   }
 }
+
+/** The six-digit code that proves someone controls the company's hr@ address. */
+export function signupCodeEmail(code: string, orgName: string): EmailMessage {
+  const spaced = code.split('').join(' ')
+  return {
+    to: '',
+    subject: `${code} is your Quanti HR verification code`,
+    html: shell(
+      'Confirm your HR address',
+      `<p style="font-size:15px;line-height:23px;color:#22333f;margin:0 0 20px;">
+         Enter this code to finish creating <strong>${orgName}</strong> on Quanti HR.
+         It expires in 15 minutes.
+       </p>
+       <p style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:32px;letter-spacing:8px;
+                 color:#06111A;background:#f4f6f8;padding:16px 20px;border-radius:8px;display:inline-block;margin:0;">
+         ${spaced}
+       </p>`,
+      `If you did not start creating a company on Quanti HR, ignore this email — nothing is
+       created until the code is entered.`,
+    ),
+    text: `Confirm your HR address
+
+Enter this code to finish creating ${orgName} on Quanti HR. It expires in 15 minutes.
+
+${code}
+
+If you did not start this, ignore this email.`,
+  }
+}
+
+/** After a self-serve signup: they chose their own password, so just the way in. */
+export function signupWelcomeEmail(link: string, orgName: string): EmailMessage {
+  return {
+    to: '',
+    subject: `${orgName} is set up on Quanti HR`,
+    html: shell(
+      `Welcome to Quanti HR`,
+      `<p style="font-size:15px;line-height:23px;color:#22333f;margin:0 0 20px;">
+         <strong>${orgName}</strong> is ready. Sign in with the password you chose, or tap the
+         button — the link works once and lasts 24 hours. The setup wizard walks you through
+         your company details, leave policy, managers and team before anyone else is let in.
+       </p>
+       <a href="${link}"
+          style="display:inline-block;background:#06111A;color:#ffffff;text-decoration:none;
+                 font-size:15px;font-weight:600;padding:14px 28px;border-radius:10px;">
+         Open the console
+       </a>`,
+      `You are receiving this because this address was used to create ${orgName} on Quanti HR.`,
+    ),
+    text: `Welcome to Quanti HR
+
+${orgName} is ready. Sign in with the password you chose, or open this link (works once, lasts 24 hours):
+${link}
+
+The setup wizard walks you through your company details, leave policy, managers and team.`,
+  }
+}

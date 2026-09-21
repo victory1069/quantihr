@@ -21,6 +21,7 @@
 import type { FastifyInstance } from 'fastify'
 import { eq, sql } from 'drizzle-orm'
 import { z } from 'zod'
+import { ApiError, ERROR_CODES } from '@quanti/shared'
 import {
   employees,
   leaveTypes,
@@ -28,11 +29,17 @@ import {
   organisations,
   policyDocuments,
 } from '../db/schema.js'
-import type { Database } from '../db/client.js'
+import type { Database, Tx } from '../db/client.js'
 import { audit } from '../lib/audit.js'
 import { requireRole, tenant } from '../lib/context.js'
 
-export const ONBOARDING_STEPS = ['basics', 'leave', 'handbook', 'staff'] as const
+/**
+ * In order. The last three are the people steps: managers first, then who
+ * reports to whom, then everyone else — because the organogram is what makes
+ * approvals route anywhere, and a team imported before its managers exist
+ * has nobody to report to.
+ */
+export const ONBOARDING_STEPS = ['basics', 'leave', 'handbook', 'managers', 'organogram', 'team'] as const
 export type OnboardingStep = (typeof ONBOARDING_STEPS)[number]
 
 const stepParam = z.enum(ONBOARDING_STEPS)
@@ -69,6 +76,11 @@ export function registerOnboardingRoutes(app: FastifyInstance, _db: Database): v
         .from(employees)
         .where(eq(employees.status, 'active'))
 
+      const requirements = await checkRequirements(tx, auth.employeeId)
+      // 'staff' was the old name of the last step; an org that ticked it
+      // before the rename keeps the credit.
+      const ticked = (org!.steps ?? []).map((st) => (st === 'staff' ? 'team' : st))
+
       return {
         organisation: {
           name: org!.name,
@@ -77,7 +89,7 @@ export function registerOnboardingRoutes(app: FastifyInstance, _db: Database): v
         },
         steps: ONBOARDING_STEPS.map((step) => ({
           step,
-          done: (org!.steps ?? []).includes(step),
+          done: ticked.includes(step),
         })),
         completedAt: org!.completedAt?.toISOString() ?? null,
         facts: {
@@ -88,7 +100,11 @@ export function registerOnboardingRoutes(app: FastifyInstance, _db: Database): v
           // imported", and a wizard that says "1 employee" on a fresh org
           // reads as a mistake.
           staff: Math.max(0, (staff?.n ?? 0) - 1),
+          managers: requirements.managers,
+          unassigned: requirements.unassigned,
         },
+        /** What still stands between this org and its dashboard. */
+        missing: requirements.missing,
       }
     })
 
@@ -135,6 +151,19 @@ export function registerOnboardingRoutes(app: FastifyInstance, _db: Database): v
 
       if (org!.completedAt) return org!.completedAt
 
+      // The wizard is a gate, not a checklist: the dashboard is not reachable
+      // until the org can actually run. Each line here is something that
+      // would otherwise fail the first employee who tried to use the app.
+      const requirements = await checkRequirements(tx, auth.employeeId)
+      if (requirements.missing.length > 0) {
+        throw new ApiError(
+          ERROR_CODES.VALIDATION_FAILED,
+          `Not finished yet: ${requirements.missing.map((m) => m.message).join(' ')}`,
+          422,
+          { missing: requirements.missing },
+        )
+      }
+
       const now = new Date()
       await tx
         .update(organisations)
@@ -170,4 +199,54 @@ export function registerOnboardingRoutes(app: FastifyInstance, _db: Database): v
 
     return reply.send({ completedAt: null })
   })
+}
+
+interface Requirement {
+  step: OnboardingStep
+  code: string
+  message: string
+}
+
+/**
+ * The rules the dashboard is held behind. Kept together so the status
+ * endpoint and the completion endpoint can never disagree about them.
+ */
+async function checkRequirements(
+  tx: Tx,
+  adminEmployeeId: string,
+): Promise<{ missing: Requirement[]; managers: number; unassigned: number }> {
+  const missing: Requirement[] = []
+
+  const [loc] = await tx.select({ n: sql<number>`count(*)::int` }).from(locations)
+  if ((loc?.n ?? 0) === 0) {
+    missing.push({ step: 'basics', code: 'no_location', message: 'Add at least one office location.' })
+  }
+  const [lt] = await tx.select({ n: sql<number>`count(*)::int` }).from(leaveTypes)
+  if ((lt?.n ?? 0) === 0) {
+    missing.push({ step: 'leave', code: 'no_leave_type', message: 'Add at least one leave type.' })
+  }
+
+  const people = await tx
+    .select({ id: employees.id, managerId: employees.managerId, roles: employees.roles })
+    .from(employees)
+    .where(eq(employees.status, 'active'))
+  const others = people.filter((p) => p.id !== adminEmployeeId)
+  const managers = people.filter((p) => (p.roles ?? []).includes('manager')).length
+  const unassigned = others.filter((p) => !p.managerId).length
+
+  if (others.length === 0) {
+    missing.push({ step: 'team', code: 'no_staff', message: 'Onboard at least one person besides yourself.' })
+  }
+  if (managers === 0) {
+    missing.push({ step: 'managers', code: 'no_manager', message: 'Add at least one manager.' })
+  }
+  if (others.length > 0 && unassigned > 0) {
+    missing.push({
+      step: 'organogram',
+      code: 'unassigned',
+      message: `${unassigned} ${unassigned === 1 ? 'person has' : 'people have'} no manager — finish the organogram.`,
+    })
+  }
+
+  return { missing, managers, unassigned }
 }

@@ -20,17 +20,16 @@
  * No bypass and no privileged connection.
  */
 
-import { randomUUID, timingSafeEqual } from 'node:crypto'
+import { timingSafeEqual } from 'node:crypto'
 import type { FastifyInstance } from 'fastify'
 import { z } from 'zod'
-import { ApiError, DEFAULT_ORG_SETTINGS, ERROR_CODES } from '@quanti/shared'
-import { employees, magicLinkTokens, organisations, users, workSchedules } from '../db/schema.js'
+import { ApiError, ERROR_CODES } from '@quanti/shared'
 import type { Database } from '../db/client.js'
-import { audit } from '../lib/audit.js'
 import { sendEmail, welcomeEmail } from '../lib/email.js'
 import { generateTemporaryPassword, hashPassword } from '../lib/password.js'
 import { env } from '../lib/env.js'
-import { expiryFromNow, hashToken, randomToken } from '../lib/tokens.js'
+import { provisionOrganisation } from '../lib/provision.js'
+import { hashToken } from '../lib/tokens.js'
 
 const provisionRequest = z.object({
   name: z.string().min(2).max(120),
@@ -89,98 +88,17 @@ export function registerPlatformRoutes(app: FastifyInstance, db: Database): void
       )
     }
 
-    const orgId = randomUUID()
-    const token = randomToken()
     const temporaryPassword = generateTemporaryPassword()
-
-    const result = await db.withTenant(orgId, async (tx) => {
-      const [org] = await tx
-        .insert(organisations)
-        .values({
-          id: orgId,
-          name: body.name.trim(),
-          country: body.country,
-          timezone: body.timezone,
-          settings: { ...DEFAULT_ORG_SETTINGS },
-          onboardingSteps: [],
-        })
-        .returning()
-
-      // One schedule so the first employee record has something to point at.
-      // The wizard lets them change it; an org with no schedule at all cannot
-      // compute lateness and every check-in would fail in a confusing way.
-      const [schedule] = await tx
-        .insert(workSchedules)
-        .values({
-          orgId,
-          name: 'Standard weekday',
-          workingDays: [1, 2, 3, 4, 5],
-          startTime: '09:00',
-          endTime: '17:00',
-          gracePeriodMinutes: 10,
-          checkinWindowStart: '06:00',
-          checkinWindowEnd: '11:00',
-        })
-        .returning()
-
-      const [user] = await tx
-        .insert(users)
-        .values({
-          orgId,
-          email,
-          passwordHash: await hashPassword(temporaryPassword),
-          mustChangePassword: true,
-          notificationPreferences: {
-            leaveDecisions: true,
-            checkinReminders: true,
-            balanceExpiry: true,
-            documents: true,
-          },
-        })
-        .returning()
-
-      const [admin] = await tx
-        .insert(employees)
-        .values({
-          orgId,
-          userId: user!.id,
-          employeeNumber: 'QH-001',
-          firstName: body.admin.firstName.trim(),
-          lastName: body.admin.lastName.trim(),
-          email,
-          phone: body.admin.phone ?? null,
-          jobTitle: 'HR Administrator',
-          employmentType: 'full_time',
-          startDate: new Date().toISOString().slice(0, 10),
-          status: 'active',
-          workScheduleId: schedule!.id,
-          // Owner as well as hr_admin: the first person in is the one who can
-          // later hand the org to someone else.
-          roles: ['employee', 'hr_admin', 'owner'],
-        })
-        .returning()
-
-      await tx.insert(magicLinkTokens).values({
-        orgId,
-        userId: user!.id,
-        tokenHash: hashToken(token),
-        // Longer than the usual 15 minutes. This link arrives in a welcome
-        // email that may not be opened the same hour it is sent.
-        expiresAt: expiryFromNow(24 * 60 * 60),
-      })
-
-      await audit(tx, {
-        orgId,
-        actorUserId: null,
-        action: 'org.provisioned',
-        entityType: 'organisation',
-        entityId: orgId,
-        after: { name: org!.name, adminEmail: email },
-        ip: request.ip,
-      })
-
-      return { org: org!, admin: admin!, userId: user!.id }
+    const result = await provisionOrganisation(db, {
+      name: body.name,
+      country: body.country,
+      timezone: body.timezone,
+      admin: body.admin,
+      password: { hash: await hashPassword(temporaryPassword), mustChange: true },
+      via: 'platform',
+      ip: request.ip,
     })
+    const { orgId, token } = result
 
     const link = `${env().APP_URL}/auth/callback?token=${token}`
 
@@ -198,13 +116,13 @@ export function registerPlatformRoutes(app: FastifyInstance, db: Database): void
 
     return reply.status(201).send({
       organisation: {
-        id: result.org.id,
-        name: result.org.name,
-        country: result.org.country,
-        timezone: result.org.timezone,
+        id: result.orgId,
+        name: result.orgName,
+        country: body.country,
+        timezone: body.timezone,
       },
       admin: {
-        employeeId: result.admin.id,
+        employeeId: result.employeeId,
         userId: result.userId,
         email,
       },

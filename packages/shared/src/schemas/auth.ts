@@ -66,3 +66,29 @@ export const jwtClaims = z.object({
 
 export type JwtClaims = z.infer<typeof jwtClaims>
 export type SessionResponse = z.infer<typeof sessionResponse>
+
+/**
+ * Self-serve company signup. The address has to be the company's HR
+ * mailbox — its local part starts with "hr" — because that is the one
+ * address a company controls that an employee does not.
+ */
+export const signupStart = z.object({
+  orgName: z.string().min(2).max(120),
+  firstName: z.string().min(1).max(80),
+  lastName: z.string().min(1).max(80),
+  email: z
+    .string()
+    .email()
+    .transform((e) => e.toLowerCase().trim())
+    .refine((e) => (e.split('@')[0] ?? '').startsWith('hr'), {
+      message: "Use your company's HR mailbox — an address that starts with hr (hr@, hr.team@, hrdesk@…)",
+    }),
+  password: z.string().min(10).max(200),
+})
+
+export const signupVerify = z.object({
+  signupId: z.string().uuid(),
+  code: z.string().regex(/^\d{6}$/),
+})
+
+export const signupResend = z.object({ signupId: z.string().uuid() })

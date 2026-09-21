@@ -22,6 +22,7 @@ import { registerPlatformRoutes } from './routes/platform.js'
 import { registerOnboardingRoutes } from './routes/onboarding.js'
 import { registerPolicyRoutes } from './routes/policy.js'
 import { registerTrainingRoutes } from './routes/training.js'
+import { registerSignupRoutes } from './routes/signup.js'
 
 export async function buildServer(db: Database): Promise<FastifyInstance> {
   const app = Fastify({
@@ -97,6 +98,7 @@ export async function buildServer(db: Database): Promise<FastifyInstance> {
   registerOnboardingRoutes(app, db)
   registerPolicyRoutes(app, db)
   registerTrainingRoutes(app, db)
+  registerSignupRoutes(app, db)
   registerAdminRoutes(app, db)
 
   return app

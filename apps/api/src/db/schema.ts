@@ -622,6 +622,22 @@ export const policyDocuments = pgTable(
   (t) => ({ orgIdx: index('policy_documents_org_idx').on(t.orgId, t.createdAt) }),
 )
 
+/** Pre-tenant; see the DDL note. No orgId column, no RLS. */
+export const signups = pgTable('signups', {
+  id: id(),
+  email: text('email').notNull(),
+  orgName: text('org_name').notNull(),
+  firstName: text('first_name').notNull(),
+  lastName: text('last_name').notNull(),
+  passwordHash: text('password_hash').notNull(),
+  codeHash: text('code_hash').notNull(),
+  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  attempts: integer('attempts').notNull().default(0),
+  verifiedAt: timestamp('verified_at', { withTimezone: true }),
+  orgId: uuid('org_id'),
+  createdAt: createdAt(),
+})
+
 export const trainingPlans = pgTable(
   'training_plans',
   {

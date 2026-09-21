@@ -40,6 +40,20 @@ export interface Database {
   readonly driver: 'pglite' | 'postgres'
 }
 
+export interface SignupRow {
+  id: string
+  email: string
+  orgName: string
+  firstName: string
+  lastName: string
+  passwordHash: string
+  codeHash: string
+  expiresAt: Date
+  attempts: number
+  verifiedAt: Date | null
+  orgId: string | null
+}
+
 export interface LookupApi {
   userByEmail(email: string): Promise<{
     userId: string
@@ -62,6 +76,27 @@ export interface LookupApi {
     revokedAt: Date | null
   } | null>
   orgs(): Promise<{ orgId: string; timezone: string; settings: Record<string, unknown> }[]>
+  /** Self-serve signups live outside any tenant; these are their only door. */
+  signupCreate(input: {
+    email: string
+    orgName: string
+    firstName: string
+    lastName: string
+    passwordHash: string
+    codeHash: string
+    expiresAt: Date
+  }): Promise<string>
+  signupById(id: string): Promise<SignupRow | null>
+  signupUpdate(
+    id: string,
+    patch: Partial<{
+      codeHash: string
+      expiresAt: Date
+      attempts: number
+      verifiedAt: Date
+      orgId: string
+    }>,
+  ): Promise<void>
   /**
    * Invite lookup for sign-up. Unlike the others this deliberately confirms
    * membership — see the note on `auth_lookup_invite` in ddl.sql.
@@ -243,6 +278,60 @@ function makeLookup(
         expiresAt: new Date(row.expires_at as string),
         revokedAt: row.revoked_at ? new Date(row.revoked_at as string) : null,
       }
+    },
+
+    async signupCreate(input) {
+      const r = await gate.run(() =>
+        exec(
+          `insert into signups (email, org_name, first_name, last_name, password_hash, code_hash, expires_at)
+           values ($1, $2, $3, $4, $5, $6, $7) returning id`,
+          [
+            input.email,
+            input.orgName,
+            input.firstName,
+            input.lastName,
+            input.passwordHash,
+            input.codeHash,
+            input.expiresAt.toISOString(),
+          ],
+        ),
+      )
+      return String(r[0]!.id)
+    },
+
+    async signupById(id) {
+      const r = await gate.run(() => exec('select * from signups where id = $1', [id]))
+      const row = r[0]
+      if (!row) return null
+      return {
+        id: String(row.id),
+        email: String(row.email),
+        orgName: String(row.org_name),
+        firstName: String(row.first_name),
+        lastName: String(row.last_name),
+        passwordHash: String(row.password_hash),
+        codeHash: String(row.code_hash),
+        expiresAt: new Date(row.expires_at as string),
+        attempts: Number(row.attempts),
+        verifiedAt: row.verified_at ? new Date(row.verified_at as string) : null,
+        orgId: row.org_id ? String(row.org_id) : null,
+      }
+    },
+
+    async signupUpdate(id, patch) {
+      const sets: string[] = []
+      const params: unknown[] = [id]
+      const add = (column: string, value: unknown) => {
+        params.push(value)
+        sets.push(`${column} = $${params.length}`)
+      }
+      if (patch.codeHash !== undefined) add('code_hash', patch.codeHash)
+      if (patch.expiresAt !== undefined) add('expires_at', patch.expiresAt.toISOString())
+      if (patch.attempts !== undefined) add('attempts', patch.attempts)
+      if (patch.verifiedAt !== undefined) add('verified_at', patch.verifiedAt.toISOString())
+      if (patch.orgId !== undefined) add('org_id', patch.orgId)
+      if (sets.length === 0) return
+      await gate.run(() => exec(`update signups set ${sets.join(', ')} where id = $1`, params))
     },
 
     async orgs() {
