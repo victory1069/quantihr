@@ -22,6 +22,8 @@ export const upsertDepartment = z.object({
   id: uuid.optional(),
   name: z.string().min(1).max(120),
   parentDepartmentId: uuid.nullable().optional(),
+  /** The department head — approvals for the department escalate here. */
+  headEmployeeId: uuid.nullable().optional(),
 })
 
 export const upsertLeaveType = z.object({
@@ -57,6 +59,18 @@ export const upsertEmployee = z.object({
   status: employeeStatus.default('active'),
   workScheduleId: uuid.nullable().optional(),
   roles: z.array(role).default(['employee']),
+  /**
+   * For someone hired but not yet started: filed on their record, sent with
+   * their welcome, and waiting to be acknowledged in the app on first
+   * sign-in. Only honoured when the record is created.
+   */
+  offerLetter: z
+    .object({
+      filename: z.string().min(1).max(200),
+      contentType: z.string().min(3).max(120),
+      contentBase64: z.string().min(1),
+    })
+    .optional(),
 })
 
 export const upsertCoverageRule = z.object({
@@ -107,6 +121,10 @@ export const bulkImportResponse = z.object({
   errorCount: z.number().int(),
   rows: z.array(bulkImportRowResult),
   committed: z.boolean(),
+  /** One temporary password per account the commit created. Shown once. */
+  credentials: z
+    .array(z.object({ employeeNumber: z.string(), email: z.string(), temporaryPassword: z.string() }))
+    .default([]),
 })
 
 export const adjustBalance = z.object({

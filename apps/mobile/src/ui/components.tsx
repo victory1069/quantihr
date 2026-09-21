@@ -22,6 +22,8 @@ import {
   ActivityIndicator,
   Animated,
   Easing,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -32,6 +34,8 @@ import {
   type TextStyle,
   type ViewStyle,
 } from 'react-native'
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import { Aurora } from './Aurora'
 import {
   font,
   MAX_CONTENT_WIDTH,
@@ -67,15 +71,15 @@ export function Screen({
   const inner = <View style={styles.column}>{children}</View>
 
   const body = !scroll ? (
-    <View style={[styles.screen, { backgroundColor: c.bg }]}>{inner}</View>
+    <View style={styles.screen}>{inner}</View>
   ) : (
     <ScrollView
-      style={[styles.screen, { backgroundColor: c.bg }]}
+      style={styles.fill}
       contentContainerStyle={[
         styles.scrollContent,
         // Room for the action to sit over the end of the list rather than on
         // top of the last row.
-        floating ? { paddingBottom: space.xxxl + 72 } : null,
+        floating ? { paddingBottom: 112 + 72 } : null,
       ]}
       refreshControl={refreshControl}
       keyboardShouldPersistTaps="handled"
@@ -85,15 +89,258 @@ export function Screen({
     </ScrollView>
   )
 
-  if (!floating) return body
+  return (
+    <View style={[styles.screen, { backgroundColor: c.bg }]}>
+      <Aurora intensity={QUIET} />
+      {body}
+      {floating ? (
+        <View style={styles.floating} pointerEvents="box-none">
+          {floating}
+        </View>
+      ) : null}
+    </View>
+  )
+}
+
+/**
+ * How strong the colour drift runs behind an in-app screen. Sign-in runs it
+ * at 1, where the colour is the subject; here it is a slow shift behind the
+ * sheets, felt more than seen.
+ */
+const QUIET = 0.35
+
+/**
+ * A page whose content rises in a sheet over its own title.
+ *
+ * The title sits dimmed at the top — it is context, not content — and the
+ * sheet carries everything the person came for. On mount the sheet springs up
+ * from below while the title fades in above it, so a screen arrives as one
+ * gesture rather than assembling itself. That is what "fluid" means here: the
+ * motion describes the structure (this is a layer over that) instead of
+ * decorating it.
+ *
+ * Transform and opacity only, so it runs on the native driver.
+ */
+export function SheetPage({
+  title,
+  eyebrow,
+  eyebrowTrailing,
+  tone = 'default',
+  heroBody,
+  children,
+  refreshControl,
+  floating,
+}: {
+  title: string
+  /** Small line above the title — a date, a mode, a section. */
+  eyebrow?: string
+  /** Something at the eyebrow's right — a mode pill, an avatar. */
+  eyebrowTrailing?: ReactNode
+  /** `manager` tints the head violet, as the mockups do for manager mode. */
+  tone?: 'default' | 'manager'
+  /**
+   * The one thing the screen is for, under the title: a check-in button, a
+   * queue button, a "you're off today" line. Everything else goes in the
+   * sheet. Left empty, the head is just the title.
+   */
+  heroBody?: ReactNode
+  children: ReactNode
+  refreshControl?: React.ReactElement<RefreshControlProps>
+  floating?: ReactNode
+}) {
+  const c = useColour()
+  const rise = useRef(new Animated.Value(0)).current
+
+  useEffect(() => {
+    Animated.spring(rise, { toValue: 1, useNativeDriver: true, ...motion.enter }).start()
+  }, [rise])
+
+  const headTint = tone === 'manager' ? c.accentSoft : 'transparent'
 
   return (
-    <View style={styles.screen}>
-      {body}
-      <View style={styles.floating} pointerEvents="box-none">
-        {floating}
-      </View>
+    <View style={[styles.screen, { backgroundColor: c.bg }]}>
+      <Aurora intensity={QUIET} />
+      <Animated.View
+        style={[
+          styles.sheetHead,
+          { backgroundColor: headTint },
+          { opacity: rise.interpolate({ inputRange: [0, 1], outputRange: [0, 1] }) },
+        ]}
+      >
+        {eyebrow || eyebrowTrailing ? (
+          <View style={styles.sheetEyebrowRow}>
+            <Text
+              style={[
+                styles.sheetEyebrow,
+                { color: tone === 'manager' ? c.accent : c.textMuted },
+              ]}
+            >
+              {eyebrow}
+            </Text>
+            {eyebrowTrailing}
+          </View>
+        ) : null}
+        <Text style={[styles.sheetTitle, { color: c.text }]} numberOfLines={3}>
+          {title}
+        </Text>
+        {heroBody ? <View style={styles.sheetHeroBody}>{heroBody}</View> : null}
+      </Animated.View>
+
+      <Animated.View
+        style={[
+          styles.sheet,
+          styles.sheetFill,
+          { backgroundColor: c.surface, borderColor: c.border },
+          {
+            transform: [
+              { translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [48, 0] }) },
+            ],
+          },
+        ]}
+      >
+        <View style={[styles.sheetHandle, { backgroundColor: c.borderStrong }]} />
+        <ScrollView
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingTop: space.sm },
+            floating ? { paddingBottom: 112 + 72 } : null,
+          ]}
+          refreshControl={refreshControl}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.column}>{children}</View>
+        </ScrollView>
+      </Animated.View>
+
+      {floating ? (
+        <View style={styles.floating} pointerEvents="box-none">
+          {floating}
+        </View>
+      ) : null}
     </View>
+  )
+}
+
+/**
+ * A hero with a sheet rising under it — the flow screens' composition.
+ *
+ * Unlike SheetPage, the sheet here is sized to its content and anchored to the
+ * bottom, so a short step (one field and a button) leaves the hero in full
+ * view and a long one (a record to confirm) covers most of the screen. When
+ * the sheet is where the action is, `dimmed` drops the hero back so the eye
+ * lands on the sheet without the hero having to leave.
+ *
+ * `stepKey` re-runs the rise whenever it changes, so moving between steps of
+ * a flow reads as one surface moving rather than a page swap.
+ */
+export function HeroSheet({
+  hero,
+  dimmed = false,
+  stepKey,
+  children,
+  maxSheet = 0.88,
+  tone = 'default',
+}: {
+  hero?: ReactNode
+  dimmed?: boolean
+  stepKey?: string
+  children: ReactNode
+  /** Fraction of the screen the sheet may take. */
+  maxSheet?: number
+  /** `manager` washes the top of the sheet violet — the AI and manager colour. */
+  tone?: 'default' | 'manager'
+}) {
+  const c = useColour()
+  const insets = useSafeAreaInsets()
+  const rise = useRef(new Animated.Value(0)).current
+  const dim = useRef(new Animated.Value(dimmed ? 1 : 0)).current
+
+  useEffect(() => {
+    rise.setValue(0)
+    Animated.spring(rise, { toValue: 1, useNativeDriver: true, ...motion.enter }).start()
+  }, [rise, stepKey])
+
+  useEffect(() => {
+    Animated.timing(dim, {
+      toValue: dimmed ? 1 : 0,
+      duration: 260,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: true,
+    }).start()
+  }, [dim, dimmed])
+
+  return (
+    <KeyboardAvoidingView
+      style={[styles.screen, { backgroundColor: c.bg }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
+      <Aurora intensity={QUIET} />
+      <Animated.View
+        style={[
+          styles.heroArea,
+          { paddingTop: insets.top + space.xl },
+          { opacity: dim.interpolate({ inputRange: [0, 1], outputRange: [1, 0.32] }) },
+        ]}
+      >
+        {hero}
+      </Animated.View>
+
+      <Animated.View
+        style={[
+          styles.sheet,
+          styles.sheetAnchored,
+          { maxHeight: `${Math.round(maxSheet * 100)}%` },
+          { backgroundColor: c.surface, borderColor: c.border },
+          {
+            opacity: rise,
+            transform: [
+              { translateY: rise.interpolate({ inputRange: [0, 1], outputRange: [64, 0] }) },
+            ],
+          },
+        ]}
+      >
+        {tone === 'manager' ? (
+          <View pointerEvents="none" style={[styles.sheetWash, { backgroundColor: c.accentSoft }]} />
+        ) : null}
+        <View style={[styles.sheetHandle, { backgroundColor: c.borderStrong }]} />
+        <ScrollView
+          // Size to content, scroll only past the sheet's max height. Without
+          // this the scroll view claims flex space it does not have and the
+          // sheet collapses on web.
+          style={styles.sheetScroll}
+          contentContainerStyle={[
+            styles.scrollContent,
+            { paddingTop: space.md, paddingBottom: insets.bottom + space.xl },
+          ]}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+        >
+          <View style={styles.column}>{children}</View>
+        </ScrollView>
+      </Animated.View>
+    </KeyboardAvoidingView>
+  )
+}
+
+/**
+ * The way back from a sheet that owns the whole screen — sits in the hero,
+ * above the dimmed title, where the header's back would otherwise be.
+ */
+export function BackLink({ label, onPress }: { label: string; onPress: () => void }) {
+  const c = useColour()
+  return (
+    <Pressable
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`Back to ${label}`}
+      hitSlop={12}
+      style={styles.backLink}
+    >
+      <Text style={[styles.backChevron, { color: c.text }]}>‹</Text>
+      <Text style={[styles.backLabel, { color: c.textMuted }]}>{label}</Text>
+    </Pressable>
   )
 }
 
@@ -121,7 +368,16 @@ export function Fab({
       <View
         style={[styles.fab, { backgroundColor: c.primary }, shadow(scheme).lifted]}
       >
-        <Text style={[styles.fabIcon, { color: c.primaryText }]}>{icon}</Text>
+        {icon === '+' ? (
+          // Two bars, not a glyph: a "+" character sits low in its line box
+          // and lands differently on every font, so it never looked centred.
+          <View style={styles.plus}>
+            <View style={[styles.plusBar, { backgroundColor: c.primaryText }]} />
+            <View style={[styles.plusBar, styles.plusBarVertical, { backgroundColor: c.primaryText }]} />
+          </View>
+        ) : (
+          <Text style={[styles.fabIcon, { color: c.primaryText }]}>{icon}</Text>
+        )}
       </View>
     </Press>
   )
@@ -270,7 +526,7 @@ export function Card({
   children: ReactNode
   style?: StyleProp<ViewStyle>
   onPress?: () => void
-  tone?: 'default' | 'primary' | 'warning' | 'danger' | 'success'
+  tone?: 'default' | 'primary' | 'warning' | 'danger' | 'success' | 'pending'
 }) {
   const c = useColour()
   const scheme = useScheme()
@@ -423,7 +679,8 @@ export function Button({
 }: {
   label: string
   onPress: () => void
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost'
+  /** `accent` is the violet of manager mode and AI — the mockups' second CTA colour. */
+  variant?: 'primary' | 'accent' | 'secondary' | 'danger' | 'ghost'
   disabled?: boolean
   loading?: boolean
   style?: StyleProp<ViewStyle>
@@ -457,12 +714,14 @@ export function Button({
           isDisabled && { backgroundColor: c.surfaceSunken, borderColor: c.border },
           // A real shadow now the ground is light. The old system glowed
           // because a near-black ground swallows a conventional shadow.
-          variant === 'primary' && !isDisabled && shadow(scheme).card,
+          (variant === 'primary' || variant === 'accent') && !isDisabled && shadow(scheme).card,
           { transform: [{ scale }] },
         ]}
       >
         {loading ? (
-          <ActivityIndicator color={variant === 'primary' ? c.primaryText : c.primary} />
+          <ActivityIndicator
+            color={variant === 'primary' || variant === 'accent' ? c.primaryText : c.primary}
+          />
         ) : (
           <Text
             style={[
@@ -625,22 +884,89 @@ export function Divider() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1 },
+  fill: { flex: 1 },
+  sheetHead: {
+    paddingHorizontal: space.lg,
+    paddingTop: space.md,
+    paddingBottom: space.xl,
+    gap: space.xs,
+  },
+  sheetEyebrow: { fontSize: font.size.md, fontFamily: font.family },
+  sheetEyebrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: space.md,
+  },
+  sheetHeroBody: { gap: space.md, paddingTop: space.lg, paddingBottom: space.sm },
+  sheetTitle: {
+    fontSize: font.size.display,
+    fontWeight: font.weight.bold,
+    letterSpacing: font.tracking.tight,
+    fontFamily: font.family,
+    lineHeight: 40,
+  },
+  sheet: {
+    borderTopLeftRadius: radius.xl + 8,
+    borderTopRightRadius: radius.xl + 8,
+    borderWidth: 1,
+    borderBottomWidth: 0,
+    overflow: 'hidden',
+  },
+  /** Content-sized and bottom-anchored; the hero gets whatever is left. */
+  /** SheetPage: the sheet takes everything under the head. */
+  sheetFill: { flex: 1 },
+  /** HeroSheet: content-sized, bottom-anchored; the hero gets what is left. */
+  sheetAnchored: { flexGrow: 0, flexShrink: 1, flexBasis: 'auto', marginTop: 'auto' },
+  sheetScroll: { flexGrow: 0, flexShrink: 1, flexBasis: 'auto' },
+  backLink: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.xs,
+    alignSelf: 'flex-start',
+    paddingVertical: space.sm,
+    marginBottom: space.sm,
+  },
+  backChevron: { fontSize: 28, lineHeight: 28, fontFamily: font.family },
+  backLabel: { fontSize: font.size.md, fontWeight: font.weight.semibold, fontFamily: font.family },
+  sheetWash: { position: 'absolute', left: 0, right: 0, top: 0, height: 320 },
+  heroArea: {
+    width: '100%',
+    maxWidth: MAX_CONTENT_WIDTH,
+    alignSelf: 'center',
+    paddingHorizontal: space.lg,
+    flexShrink: 1,
+  },
+  sheetHandle: {
+    alignSelf: 'center',
+    width: 44,
+    height: 4,
+    borderRadius: 2,
+    marginTop: space.md,
+    marginBottom: space.xs,
+  },
   floating: {
     position: 'absolute',
     right: space.lg,
-    bottom: space.lg,
+    // Clear of the floating tab bar (48 tall, padded, plus the home
+    // indicator): a button the bar covers is a button nobody can press.
+    bottom: 112,
     alignItems: 'flex-end',
     gap: space.sm,
   },
   fab: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  fabIcon: { fontSize: 30, lineHeight: 34, fontWeight: font.weight.regular },
-  scrollContent: { paddingHorizontal: space.lg, paddingBottom: space.xxxl },
+  fabIcon: { fontSize: 30, lineHeight: 30, fontWeight: font.weight.regular },
+  plus: { width: 20, height: 20, alignItems: 'center', justifyContent: 'center' },
+  plusBar: { position: 'absolute', width: 20, height: 2.5, borderRadius: 1.25 },
+  plusBarVertical: { width: 2.5, height: 20 },
+  // Clears the floating tab bar (52 + padding + inset) with room to spare.
+  scrollContent: { paddingHorizontal: space.lg, paddingBottom: 112 },
   column: {
     width: '100%',
     maxWidth: MAX_CONTENT_WIDTH,
@@ -662,7 +988,7 @@ const styles = StyleSheet.create({
     letterSpacing: font.tracking.tight,
     fontFamily: font.family,
   },
-  pageSub: { fontSize: font.size.md, lineHeight: 22, fontFamily: font.family },
+  pageSub: { fontSize: font.size.md, lineHeight: 20, fontFamily: font.family },
 
   segments: {
     flexDirection: 'row',
@@ -696,7 +1022,7 @@ const styles = StyleSheet.create({
   },
 
   button: {
-    minHeight: 52,
+    minHeight: 48,
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -751,7 +1077,7 @@ const styles = StyleSheet.create({
   emptyBody: {
     fontSize: font.size.md,
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 20,
     fontFamily: font.family,
   },
   emptyAction: { marginTop: space.sm, alignSelf: 'stretch' },
@@ -759,7 +1085,7 @@ const styles = StyleSheet.create({
   notice: { borderRadius: radius.md, borderWidth: 1, flexDirection: 'row', overflow: 'hidden' },
   noticeBar: { width: 3 },
   noticeBody: { flex: 1, padding: space.md, gap: space.sm },
-  noticeText: { fontSize: font.size.md, lineHeight: 22, fontFamily: font.family },
+  noticeText: { fontSize: font.size.md, lineHeight: 20, fontFamily: font.family },
 
   skeleton: { borderRadius: radius.sm, overflow: 'hidden' },
   skeletonSweep: { position: 'absolute', top: 0, bottom: 0, width: 90, opacity: 0.9 },
@@ -777,10 +1103,15 @@ const cardTone = (c: Palette): Record<string, ViewStyle> => ({
   warning: { backgroundColor: c.warningSoft, borderColor: c.warning },
   danger: { backgroundColor: c.dangerSoft, borderColor: c.danger },
   success: { backgroundColor: c.successSoft, borderColor: c.success },
+  // Waiting on someone. Violet, not pink: in this palette pink is absent,
+  // overdue and deadline, and a request that is simply pending is none of
+  // those.
+  pending: { backgroundColor: c.pendingSoft, borderColor: c.pending },
 })
 
 const buttonVariant = (c: Palette): Record<string, ViewStyle> => ({
   primary: { backgroundColor: c.primary },
+  accent: { backgroundColor: c.accent },
   secondary: { backgroundColor: c.primarySoft, borderColor: c.primaryBorder },
   danger: { backgroundColor: c.dangerSoft, borderColor: c.danger },
   ghost: { backgroundColor: 'transparent' },
@@ -788,6 +1119,7 @@ const buttonVariant = (c: Palette): Record<string, ViewStyle> => ({
 
 const buttonLabelVariant = (c: Palette): Record<string, TextStyle> => ({
   primary: { color: c.primaryText },
+  accent: { color: '#FFFFFF' },
   secondary: { color: c.primary },
   danger: { color: c.danger },
   ghost: { color: c.textMuted },

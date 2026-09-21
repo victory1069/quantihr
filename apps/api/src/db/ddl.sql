@@ -9,8 +9,9 @@
 --      `app.org_id` session claim.
 --   2. The application connects as `quanti_app`, which is NOT a superuser and
 --      NOT the table owner. Both matter: superusers bypass RLS entirely, and
---      table owners bypass it unless FORCE is set. We set FORCE anyway as a
---      second line of defence.
+--      table owners bypass it unless FORCE is set. FORCE is deliberately not
+--      set — the owner is the identity of the pre-tenant lookups, and forcing
+--      the policy onto it blinds them. See the note at the RLS block.
 
 -- `gen_random_uuid()` is core since Postgres 13, so no pgcrypto extension is
 -- required. That also keeps this schema loadable under PGlite, which does not
@@ -25,6 +26,26 @@ begin
   if not exists (select 1 from pg_roles where rolname = 'quanti_app') then
     create role quanti_app nologin;
   end if;
+
+  -- The connecting user must be able to `set role` into quanti_app.
+  --
+  -- Locally the connection is a superuser and can assume any role, so this was
+  -- never exercised. On managed Postgres the connecting user is an ordinary
+  -- owner with CREATEROLE, and on PG16+ creating a role auto-inserts a
+  -- membership row for the creator with ADMIN but *without* SET — so a naive
+  -- "does membership exist?" guard finds that row and skips the grant, and
+  -- `set local role quanti_app` still fails with 42501. That guard is what
+  -- broke the first fix. Grant unconditionally, with SET stated explicitly.
+  --
+  -- The PG16 `WITH SET TRUE` form is tried first; on an older server that is
+  -- a syntax error and the plain grant — where membership alone confers SET —
+  -- is used instead. `current_user` is whoever runs this script, which is the
+  -- same user the app connects as.
+  begin
+    execute format('grant quanti_app to %I with set true, inherit true', current_user);
+  exception when syntax_error or feature_not_supported then
+    execute format('grant quanti_app to %I', current_user);
+  end;
 end $$;
 
 -- ---------------------------------------------------------------------------
@@ -37,6 +58,11 @@ create table if not exists organisations (
   country      text not null default 'NG',
   timezone     text not null default 'Africa/Lagos',
   settings     jsonb not null default '{}'::jsonb,
+  -- Setup progress. Steps completed are recorded as they happen so the wizard
+  -- can resume where the HR lead left off; completed_at is what gates the
+  -- console out of the wizard and into the product.
+  onboarding_steps         jsonb not null default '[]'::jsonb,
+  onboarding_completed_at  timestamptz,
   created_at   timestamptz not null default now()
 );
 
@@ -48,6 +74,13 @@ create table if not exists users (
   last_login_at     timestamptz,
   push_token        text,
   biometric_enabled boolean not null default false,
+  -- Password is a second sign-in method beside the magic link, added so HR
+  -- can hand a new joiner credentials on paper. Null means link-only. A
+  -- temporary password sets must_change_password, and the app refuses to go
+  -- anywhere else until it is replaced.
+  password_hash        text,
+  must_change_password boolean not null default false,
+  password_changed_at  timestamptz,
   notification_preferences jsonb not null default
     '{"leaveDecisions":true,"checkinReminders":true,"balanceExpiry":true,"documents":true}'::jsonb,
   created_at        timestamptz not null default now(),
@@ -70,6 +103,10 @@ create table if not exists departments (
   org_id               uuid not null references organisations(id) on delete cascade,
   name                 text not null,
   parent_department_id uuid references departments(id) on delete set null,
+  -- The department head: a manager, set during setup or later. Not a
+  -- foreign key to employees because employees references departments and
+  -- the two tables would then have to be created in each other's order.
+  head_employee_id     uuid,
   created_at           timestamptz not null default now()
 );
 
@@ -703,11 +740,185 @@ create table if not exists speaker_mappings (
 );
 
 -- ---------------------------------------------------------------------------
+-- Policy corpus — what the self-service assistant answers from
+-- ---------------------------------------------------------------------------
+
+-- The handbook and every policy an org uploads, with the text extracted at
+-- upload time. The assistant is given an org's corpus whole, in a cached
+-- prompt, rather than chunks from a shared index: a handbook is tens of
+-- thousands of tokens, which fits, and it makes per-tenant isolation a matter
+-- of which rows are loaded rather than which vectors are filtered. One
+-- organisation's handbook surfacing in another's assistant is the
+-- highest-severity failure this product can have, and a per-row org_id under
+-- RLS is a far stronger guarantee than a metadata filter on an index.
+create table if not exists policy_documents (
+  id             uuid primary key default gen_random_uuid(),
+  org_id         uuid not null references organisations(id) on delete cascade,
+  title          text not null,
+  filename       text not null,
+  mime_type      text not null,
+  storage_key    text not null,
+  -- Extracted at upload. Empty when extraction failed, which the assistant
+  -- treats as "this document says nothing" rather than guessing.
+  body_text      text not null default '',
+  char_count     integer not null default 0,
+  status         text not null default 'ready',
+  uploaded_by    uuid references users(id) on delete set null,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now()
+);
+
+create index if not exists policy_documents_org_idx on policy_documents(org_id, created_at desc);
+
+-- ---------------------------------------------------------------------------
+-- Self-serve signups
+--
+-- Pre-tenant by definition: nothing here belongs to an organisation until
+-- the code is verified and the organisation is created. Deliberately outside
+-- row-level security, and read only through the app's own lookup layer.
+-- The password is hashed the moment it is submitted; it is never stored as
+-- typed, even for the fifteen minutes the code is valid.
+-- ---------------------------------------------------------------------------
+
+create table if not exists signups (
+  id             uuid primary key default gen_random_uuid(),
+  email          text not null,
+  org_name       text not null,
+  first_name     text not null,
+  last_name      text not null,
+  password_hash  text not null,
+  code_hash      text not null,
+  expires_at     timestamptz not null,
+  attempts       integer not null default 0,
+  verified_at    timestamptz,
+  org_id         uuid,
+  created_at     timestamptz not null default now()
+);
+
+create index if not exists signups_email_idx on signups(email, created_at desc);
+
+-- ---------------------------------------------------------------------------
+-- Learning & development
+--
+-- A plan is one employee's intended training for a month or a quarter,
+-- submitted for their manager's approval. Items are the individual courses;
+-- each carries its own completion and its proof. The plan and its items are
+-- separate rows because approval is of the plan as a whole, while proof and
+-- reminders are per course.
+-- ---------------------------------------------------------------------------
+
+create table if not exists training_plans (
+  id             uuid primary key default gen_random_uuid(),
+  org_id         uuid not null references organisations(id) on delete cascade,
+  employee_id    uuid not null references employees(id) on delete cascade,
+  -- 'month' or 'quarter'; period_start is the first day of that period.
+  period_type    text not null default 'month',
+  period_start   date not null,
+  -- draft → submitted → approved | declined | changes_requested (→ submitted)
+  status         text not null default 'draft',
+  submitted_at   timestamptz,
+  decided_at     timestamptz,
+  decided_by     uuid references users(id) on delete set null,
+  decision_note  text,
+  created_at     timestamptz not null default now(),
+  updated_at     timestamptz not null default now(),
+  unique (org_id, employee_id, period_type, period_start)
+);
+
+create index if not exists training_plans_employee_idx on training_plans(org_id, employee_id, period_start desc);
+
+create table if not exists training_items (
+  id                 uuid primary key default gen_random_uuid(),
+  org_id             uuid not null references organisations(id) on delete cascade,
+  plan_id            uuid not null references training_plans(id) on delete cascade,
+  employee_id        uuid not null references employees(id) on delete cascade,
+  title              text not null,
+  provider           text,
+  -- 'physical' or 'virtual'
+  mode               text not null default 'virtual',
+  start_date         date not null,
+  end_date           date not null,
+  -- Why this course, this period: the "based on need" the manager judges.
+  need               text not null default '',
+  cost_kobo          bigint,
+  -- planned → completed | missed. Set by the employee with proof, or by the
+  -- reminder sweep once the end date is long past.
+  status             text not null default 'planned',
+  proof_document_id  uuid references documents(id) on delete set null,
+  proof_note         text,
+  completed_at       timestamptz,
+  -- The last reminder kind sent, so each is sent once: 'starts', 'proof_due', 'nudge_1' …
+  last_reminder      text,
+  last_reminder_at   timestamptz,
+  created_at         timestamptz not null default now()
+);
+
+create index if not exists training_items_plan_idx on training_items(org_id, plan_id);
+create index if not exists training_items_dates_idx on training_items(org_id, status, end_date);
+
+-- ---------------------------------------------------------------------------
+-- Additive migrations
+-- ---------------------------------------------------------------------------
+
+alter table departments add column if not exists head_employee_id uuid;
+
+-- `create table if not exists` is skipped entirely when the table already
+-- exists, so a column added to a CREATE above never reaches a database that was
+-- built before it. Locally that is invisible — PGlite is in-memory and every
+-- boot is a fresh database — and it surfaced on Render as
+-- `column "onboarding_steps" of relation "organisations" does not exist`.
+--
+-- The rule from here on: a column added to an existing table goes in the CREATE
+-- above (so a fresh database is right) AND here as an idempotent ALTER (so an
+-- existing one catches up). Both, every time. `add column if not exists` is a
+-- no-op when the column is already there, so this section is safe on every
+-- boot and never needs pruning.
+
+alter table organisations add column if not exists onboarding_steps        jsonb not null default '[]'::jsonb;
+alter table organisations add column if not exists onboarding_completed_at timestamptz;
+
+alter table meetings add column if not exists venue                   text;
+alter table meetings add column if not exists agenda                  text;
+alter table meetings add column if not exists checkin_code            text;
+alter table meetings add column if not exists checkin_code_expires_at timestamptz;
+
+alter table meeting_actions add column if not exists completed_at timestamptz;
+
+alter table users add column if not exists password_hash        text;
+alter table users add column if not exists must_change_password boolean not null default false;
+alter table users add column if not exists password_changed_at  timestamptz;
+
+-- ---------------------------------------------------------------------------
 -- Row-level security
 -- ---------------------------------------------------------------------------
 --
 -- `nullif(..., '')` makes an unset or blank claim compare as NULL, which makes
 -- the predicate NULL, which hides the row. Unset context fails closed.
+--
+-- **Why RLS is enabled but not FORCED.** FORCE makes the policy apply to the
+-- table owner as well. That sounds like a second line of defence, and the
+-- header of this file once described it that way — but it broke sign-in on
+-- the first real deployment, and the reasoning was wrong:
+--
+--   - The application never runs as the owner. Every request transaction does
+--     `set local role quanti_app`, a non-owner, and RLS applies to it in full
+--     whether or not FORCE is set. FORCE adds nothing to the app's isolation.
+--
+--   - The owner IS the identity of the SECURITY DEFINER lookups below —
+--     auth_lookup_user, auth_lookup_magic_link, auth_lookup_invite,
+--     list_org_ids. They run before any tenant claim exists; that is their
+--     whole purpose. Under FORCE, with no claim set, the policy hides every
+--     row from them: no user is ever found, no magic link ever verifies, and
+--     seedIfEmpty sees zero orgs on every boot.
+--
+--   - Locally this was invisible because PGlite's owner is a superuser, and
+--     superusers bypass RLS regardless of FORCE. On managed Postgres (Render,
+--     RDS, Supabase) the owner is an ordinary role and FORCE bites.
+--
+-- The narrow lookups are still narrow — each returns a handful of columns
+-- and is the only privileged path — and the app role is still fully
+-- constrained. What FORCE was defending against was the owner reading
+-- tenant data, and the owner is exactly the role that has to.
 
 do $$
 declare
@@ -722,12 +933,14 @@ declare
     'documents', 'idempotency_keys', 'notifications', 'audit_log',
     'meeting_types', 'meetings', 'meeting_participants',
     'meeting_transcripts', 'meeting_summaries', 'meeting_actions',
-    'meeting_disputes', 'speaker_mappings'
+    'meeting_disputes', 'speaker_mappings',
+    'policy_documents', 'training_plans', 'training_items'
   ];
 begin
   foreach t in array tenant_tables loop
     execute format('alter table %I enable row level security', t);
-    execute format('alter table %I force row level security', t);
+    -- Deliberately NOT forced. See the note above the block.
+    execute format('alter table %I no force row level security', t);
     execute format('drop policy if exists org_isolation on %I', t);
     execute format(
       'create policy org_isolation on %I using (org_id = nullif(current_setting(''app.org_id'', true), '''')::uuid)
@@ -737,7 +950,7 @@ end $$;
 
 -- organisations is the tenancy root: an org row is visible only to itself.
 alter table organisations enable row level security;
-alter table organisations force row level security;
+alter table organisations no force row level security;
 drop policy if exists org_self on organisations;
 create policy org_self on organisations
   using (id = nullif(current_setting('app.org_id', true), '')::uuid)
@@ -774,10 +987,15 @@ revoke update, delete on audit_log from quanti_app;
 -- Nothing here should ever return a list of users, accept a pattern, or be
 -- granted to a role other than quanti_app.
 
-create or replace function auth_lookup_user(p_email text)
-returns table (user_id uuid, org_id uuid)
+-- Dropped first, not just replaced: `create or replace` refuses to change a
+-- function's return type, and this one grew two columns when passwords
+-- arrived. A deployment whose database predates that would fail to boot.
+-- The grant below is re-issued every run, so dropping loses nothing.
+drop function if exists auth_lookup_user(text);
+create function auth_lookup_user(p_email text)
+returns table (user_id uuid, org_id uuid, password_hash text, must_change_password boolean)
 language sql stable security definer set search_path = public as $$
-  select id, org_id from users where email = lower(trim(p_email)) limit 1
+  select id, org_id, password_hash, must_change_password from users where email = lower(trim(p_email)) limit 1
 $$;
 
 create or replace function auth_lookup_magic_link(p_token_hash text)

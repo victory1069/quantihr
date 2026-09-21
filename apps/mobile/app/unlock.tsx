@@ -10,7 +10,7 @@
  *    self-blame; masks, sunglasses and bright sun are the actual reasons, and
  *    naming them stops people retrying identically five times.
  *
- * The magic-link escape stays visible throughout. A passwordless product with
+ * The sign-in escape stays visible throughout. A product with
  * no visible way past a failed biometric is a product people get locked out of.
  */
 
@@ -18,7 +18,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Animated, Easing, Pressable, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
-import { Avatar } from '../src/ui/primitives'
+import { LogoMark } from '../src/ui/Logo'
+import { Aurora } from '../src/ui/Aurora'
 import { colour, font, MAX_CONTENT_WIDTH, radius, space } from '../src/ui/theme'
 import { authenticate } from '../src/ui/BiometricGate'
 import { clearTokens, useSession } from '../src/store/session'
@@ -36,7 +37,6 @@ export default function Unlock() {
   const [checking, setChecking] = useState(false)
 
   const name = me ? `${me.employee.firstName} ${me.employee.lastName}` : ''
-  const first = me?.employee.firstName ?? ''
 
   const scan = useCallback(async () => {
     setChecking(true)
@@ -111,14 +111,17 @@ export default function Unlock() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
+      <Aurora intensity={0.35} />
       <View style={[styles.column, styles.centred]}>
-        <Avatar name={name || '··'} size={64} />
-        <Text style={styles.welcomeBack}>
-          {first ? `Welcome back, ${first}` : 'Welcome back'}
-        </Text>
+        <View style={styles.glow} pointerEvents="none" />
+        <LogoMark size={64} />
 
         <ScanBadge active={checking} />
         <Text style={styles.scanTitle}>Look at your phone</Text>
+        {/* Whose account is loaded, before the scan: shared and hand-me-down
+            phones are common, and this is the line that stops the wrong
+            person unlocking into a colleague's pay. */}
+        <Text style={styles.welcomeBack}>{name ? `Signed in as ${name}` : 'Signed in'}</Text>
 
         <View style={styles.spacer} />
 
@@ -265,12 +268,20 @@ const styles = StyleSheet.create({
   spacer: { flex: 1, minHeight: space.lg },
 
   welcomeBack: {
-    fontSize: font.size.lg,
+    fontSize: font.size.md,
     color: colour.textMuted,
     fontFamily: font.family,
   },
+  glow: {
+    position: 'absolute',
+    width: 380,
+    height: 380,
+    borderRadius: 190,
+    backgroundColor: colour.primary,
+    opacity: 0.08,
+  },
   scanTitle: {
-    fontSize: font.size.xl,
+    fontSize: font.size.xxl,
     fontWeight: font.weight.bold,
     color: colour.text,
     fontFamily: font.family,
@@ -307,7 +318,7 @@ const styles = StyleSheet.create({
   lede: {
     fontSize: font.size.md,
     color: colour.textMuted,
-    lineHeight: 23,
+    lineHeight: 21,
     fontFamily: font.family,
   },
 
@@ -354,7 +365,7 @@ const styles = StyleSheet.create({
 
   secondaryButton: {
     alignSelf: 'stretch',
-    minHeight: 52,
+    minHeight: 48,
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: colour.borderStrong,

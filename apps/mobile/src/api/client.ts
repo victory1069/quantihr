@@ -9,7 +9,7 @@
  */
 
 import { ApiError, ERROR_CODES, type ErrorCode } from '@quanti/shared'
-import { getRefreshToken, setTokens, clearTokens, getAccessToken } from '../store/session'
+import { getAccessToken, refreshSession as sharedRefresh } from '../store/session'
 
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE'
@@ -38,40 +38,15 @@ function baseUrl(): string {
 
 export const API_BASE_URL = baseUrl()
 
-let refreshInFlight: Promise<boolean> | null = null
-
+/**
+ * Refresh is single-flighted in the session store, and it has to be: the
+ * refresh token rotates on every use, so two concurrent refreshes with the
+ * same token look to the server like a stolen token being replayed, and it
+ * revokes the whole family. On a cold start the store's restore and the
+ * first 401 here used to race exactly that way.
+ */
 async function refreshSession(): Promise<boolean> {
-  if (refreshInFlight) return refreshInFlight
-
-  refreshInFlight = (async () => {
-    const refreshToken = await getRefreshToken()
-    if (!refreshToken) return false
-
-    try {
-      const response = await fetch(`${API_BASE_URL}/v1/auth/refresh`, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ refreshToken }),
-      })
-      if (!response.ok) {
-        await clearTokens()
-        return false
-      }
-      const session = (await response.json()) as {
-        accessToken: string
-        refreshToken: string
-      }
-      await setTokens(session.accessToken, session.refreshToken)
-      return true
-    } catch {
-      // A network failure is not an expired session — keep the refresh token.
-      return false
-    } finally {
-      refreshInFlight = null
-    }
-  })()
-
-  return refreshInFlight
+  return (await sharedRefresh()) === 'ok'
 }
 
 export async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {

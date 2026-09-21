@@ -13,18 +13,34 @@ import { env } from './lib/env.js'
 import { runAccrual } from './jobs/accrual.js'
 import { rotateCodes } from './jobs/codes.js'
 import { sweepCheckinWindows, sweepPendingApprovals } from './jobs/reminders.js'
+import { sweepTrainingReminders } from './jobs/training.js'
 import { flushNotifications } from './lib/notify.js'
 import { seedIfEmpty } from './db/seed.js'
 
+/**
+ * Each stage announces itself before it runs. On a managed host the only
+ * evidence of a failed boot is the log, and a process that goes quiet
+ * between "started" and "listening" is undiagnosable — which is exactly what
+ * a hung database connection looks like.
+ */
+const stage = (name: string) => console.log(`[boot] ${name}`)
+
 async function main() {
+  stage(`connecting to ${env().DATABASE_URL ? 'postgres' : 'pglite'}`)
   const db = await createDatabase()
+
+  stage('applying schema')
   await db.applySchema()
 
   if (env().NODE_ENV !== 'production') {
+    stage('seeding if empty')
     await seedIfEmpty(db)
   }
 
+  stage('building server')
   const app = await buildServer(db)
+
+  stage(`listening on ${env().HOST}:${env().PORT}`)
   await app.listen({ port: env().PORT, host: env().HOST })
 
   app.log.info(`Quanti HR API on :${env().PORT} (${db.driver})`)
@@ -34,6 +50,7 @@ async function main() {
     setInterval(() => void rotateCodes(db).catch((e) => app.log.error(e)), 60_000),
     setInterval(() => void sweepPendingApprovals(db).catch((e) => app.log.error(e)), 300_000),
     setInterval(() => void sweepCheckinWindows(db).catch((e) => app.log.error(e)), 300_000),
+    setInterval(() => void sweepTrainingReminders(db).catch((e) => app.log.error(e)), 900_000),
     setInterval(async () => {
       try {
         for (const org of await db.lookup.orgs()) await flushNotifications(db, org.orgId)

@@ -6,6 +6,7 @@ export * as team from './team.js'
 export * as documents from './documents.js'
 export * as config from './config.js'
 export * as admin from './admin.js'
+export * as training from './training.js'
 
 export type { Role, LeaveRequestStatus, AttendanceStatusValue } from './common.js'
 export type { JwtClaims, SessionResponse } from './auth.js'
@@ -56,3 +57,5 @@ export type {
   ReportKind,
 } from './reports.js'
 export { REPORT_KINDS } from './reports.js'
+export * as policy from './policy.js'
+export type { PolicyAnswer, AskResponse, PolicyDocumentView } from './policy.js'

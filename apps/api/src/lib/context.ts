@@ -54,11 +54,24 @@ const PUBLIC_ROUTES = new Set([
   'POST:/v1/auth/magic-link',
   'POST:/v1/auth/verify',
   'POST:/v1/auth/refresh',
+  // The password door. Rate-limited per IP in the route; the change endpoint
+  // is deliberately NOT here — it needs the session the sign-in issued.
+  'POST:/v1/auth/password',
+  // Self-serve company signup: nothing exists to authenticate against yet.
+  // Rate-limited per address and per IP in the route.
+  'POST:/v1/signup/start',
+  'POST:/v1/signup/verify',
+  'POST:/v1/signup/resend',
+  // Google sign-in: verified against Google, then matched to an account.
+  'POST:/v1/auth/sso/google',
   // Pre-tenant sign-up lookups; rate-limited in the route.
   'GET:/v1/auth/invite',
   'POST:/v1/auth/otp/request',
   'POST:/v1/auth/otp/verify',
   'GET:/health',
+  // Authenticated by the platform key in the route, not by a tenant JWT —
+  // provisioning happens before an org exists to scope a token to.
+  'POST:/v1/platform/organisations',
   // Static console shell. It holds no data — everything it shows is fetched
   // over the same authenticated /v1 endpoints the mobile client uses.
   'GET:/console',

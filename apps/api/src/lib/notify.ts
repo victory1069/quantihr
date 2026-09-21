@@ -26,6 +26,13 @@ export type NotificationEvent =
   | 'meeting.action_assigned'
   | 'meeting.dispute_raised'
   | 'meeting.recording_started'
+  | 'meeting.invited'
+  | 'meeting.rsvp'
+  | 'training.plan_submitted'
+  | 'training.plan_decided'
+  | 'training.starts'
+  | 'training.proof_due'
+  | 'training.plan_due'
   | 'attendance.dispute_resolved'
 
 export interface NotificationInput {
@@ -57,6 +64,13 @@ const PREFERENCE_KEY: Record<NotificationEvent, string> = {
   // and a preference that can suppress it would defeat the consent it exists
   // to give (meeting spec §8.1).
   'meeting.recording_started': 'recordingAlerts',
+  'meeting.invited': 'meetings',
+  'meeting.rsvp': 'meetings',
+  'training.plan_submitted': 'training',
+  'training.plan_decided': 'training',
+  'training.starts': 'training',
+  'training.proof_due': 'training',
+  'training.plan_due': 'training',
   // No dedicated preference category for attendance exists yet beyond the
   // check-in reminder itself, and this is close enough to that family not to
   // warrant a fifth one.
@@ -75,6 +89,17 @@ export const NOTIFICATION_ACTIONS: Partial<Record<NotificationEvent, string[]>> 
   // Confirming the whole extracted set from the notification is what keeps
   // host review at fifteen seconds rather than five minutes (meeting spec §9).
   'meeting.review_ready': ['review'],
+  // Answering from the notification is the whole point of sending one; the
+  // meeting screen offers the same two buttons for anyone who opens it.
+  'meeting.invited': ['accept', 'decline'],
+}
+
+/** Which push category carries an event's actions, so the OS shows buttons. */
+const PUSH_CATEGORY: Partial<Record<NotificationEvent, string>> = {
+  'leave.submitted': 'leave_approval',
+  'leave.pending_48h': 'leave_approval',
+  'meeting.review_ready': 'meeting_review',
+  'meeting.invited': 'meeting_invite',
 }
 
 export async function queueNotification(tx: Tx, input: NotificationInput): Promise<void> {
@@ -148,7 +173,7 @@ export async function flushNotifications(db: Database, orgId: string): Promise<n
       title: n.title,
       body: n.body,
       data: { ...(n.data as object), deepLink: n.deepLink },
-      categoryId: NOTIFICATION_ACTIONS[n.event as NotificationEvent] ? 'leave_approval' : undefined,
+      categoryId: PUSH_CATEGORY[n.event as NotificationEvent],
     }))
     await deliver(messages)
   }

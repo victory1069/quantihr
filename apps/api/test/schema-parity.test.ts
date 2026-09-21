@@ -93,13 +93,21 @@ describe('row-level security is on everywhere it matters', () => {
   const exempt = new Set<string>()
 
   it.each([...new Set(drizzleTables.map((t) => t.name))].filter((n) => !exempt.has(n)))(
-    '%s has RLS enabled and forced',
+    '%s has RLS enabled but not forced',
     (name) => {
       const state = rlsByTable.get(name)
       expect(state, `${name} not found in pg_class`).toBeDefined()
       expect(state!.enabled, `${name} does not have RLS enabled`).toBe(true)
-      // FORCE matters because the table owner would otherwise bypass the policy.
-      expect(state!.forced, `${name} does not FORCE row level security`).toBe(true)
+      // NOT forced, deliberately. This assertion used to be the opposite, and
+      // it encoded a belief that broke sign-in on the first real deployment:
+      // FORCE applies the policy to the table owner, and the owner is the
+      // identity of the SECURITY DEFINER lookups that run before any tenant
+      // claim exists. Under FORCE they see nothing — no user found, no magic
+      // link verifies. The app role is a non-owner and is constrained in full
+      // either way, so FORCE bought no isolation. Locally the owner is a
+      // superuser, which bypasses RLS regardless, which is why every suite
+      // passed while production could not sign anyone in.
+      expect(state!.forced, `${name} FORCES row level security — see ddl.sql`).toBe(false)
     },
   )
 

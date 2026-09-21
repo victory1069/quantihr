@@ -166,6 +166,6 @@ const styles = StyleSheet.create({
   swatch: { width: 12, height: 12, borderRadius: 6 },
   title: { fontSize: font.size.xl, fontWeight: font.weight.bold, color: colour.text, flex: 1 },
   label: { fontSize: font.size.sm, fontWeight: font.weight.semibold, color: colour.textMuted },
-  body: { fontSize: font.size.md, color: colour.text, lineHeight: 21 },
-  quote: { fontSize: font.size.md, color: colour.textMuted, fontStyle: 'italic', lineHeight: 21 },
+  body: { fontSize: font.size.md, color: colour.text, lineHeight: 19 },
+  quote: { fontSize: font.size.md, color: colour.textMuted, fontStyle: 'italic', lineHeight: 19 },
 })

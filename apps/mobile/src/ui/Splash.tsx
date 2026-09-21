@@ -67,11 +67,17 @@ export function Splash({
       accessibilityRole="progressbar"
       accessibilityLabel="Loading Quanti HR"
     >
+      {/* A soft cyan glow behind the mark — the only thing on the screen that
+          says this is Quanti's black rather than any black. */}
+      <View style={styles.glow} pointerEvents="none" />
       <Animated.View style={{ alignItems: 'center', transform: [{ translateY: lift }] }}>
-        <LogoLoader size={104} />
-        <Text style={styles.wordmark}>Quanti</Text>
+        <LogoLoader size={88} />
+        <Text style={styles.wordmark}>
+          Quanti<Text style={styles.wordmarkHr}>{'  HR'}</Text>
+        </Text>
         {message ? <Text style={styles.message}>{message}</Text> : null}
       </Animated.View>
+      <Text style={styles.footer}>NDPR COMPLIANT · DATA HELD IN NIGERIA</Text>
     </Animated.View>
   )
 }
@@ -83,6 +89,29 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     zIndex: 200,
+  },
+  glow: {
+    position: 'absolute',
+    width: 420,
+    height: 420,
+    borderRadius: 210,
+    backgroundColor: colour.primary,
+    opacity: 0.09,
+    transform: [{ translateY: -20 }],
+  },
+  wordmarkHr: {
+    fontSize: font.size.sm,
+    fontWeight: font.weight.semibold,
+    letterSpacing: font.tracking.label,
+    color: colour.primary,
+  },
+  footer: {
+    position: 'absolute',
+    bottom: 48,
+    fontSize: font.size.xs,
+    letterSpacing: font.tracking.label,
+    color: colour.textFaint,
+    fontFamily: font.mono,
   },
   wordmark: {
     marginTop: space.xl,

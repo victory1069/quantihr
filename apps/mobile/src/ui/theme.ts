@@ -1,17 +1,20 @@
 /**
- * Design tokens — Quanti "Soft".
+ * Design tokens — Quanti, 2026 look.
  *
- * Light-first and warm. The previous system was Midnight Cyan, built on
- * #06111A because the logo mark is cyan and magenta; this one deliberately
- * departs from that. Cyan cannot carry a light ground — #00D3FF on white is
- * about 1.9:1, which fails for type at any size — so rather than compromise it
- * into an unrecognisable darker teal, the interface palette is re-pitched
- * around indigo and coral and the brand hues are retained for the mark alone.
+ * Dark-first: deep navy ground, cyan for every action, violet for anything a
+ * model produced or for manager mode, mono figures set inline in prose. This
+ * replaces the warm light "Soft" system, which itself replaced the original
+ * Midnight Cyan; the brand has come back to its own colours with a lighter
+ * touch than the first time.
+ *
+ * Content rises in sheets over a dimmed page title, and the tab bar is a
+ * floating pill. Those are layout, not colour, and live in `Sheet` and
+ * `TabBar`.
  *
  * **Two palettes, one shape.** `light` and `dark` carry identical keys, so a
  * screen never branches on scheme — it asks for `c.surface` and gets the right
- * one. Dark here is warm-neutral rather than navy, to stay in the same family
- * as the light ground rather than reading as the old system.
+ * one. Dark is the product's look; light is kept as a complete alternate so a
+ * system-following mode can be switched on later without redesigning.
  *
  * **Why a hook and not a constant.** `StyleSheet.create` captures its values at
  * import time, so a module-level colour object can never follow the system
@@ -130,51 +133,50 @@ const light: Palette = {
   scrim: 'rgba(28, 27, 26, 0.42)',
 }
 
-/**
- * Warm-neutral dark, not navy.
- *
- * Indigo lightens to #8B7CFF here: #5B4BE8 on a dark ground drops to roughly
- * 3:1, which is under the bar for body text and looks muddy besides.
- */
 const dark: Palette = {
-  bg: '#16151A',
-  surface: '#1F1E24',
-  surfaceRaised: '#26252C',
-  surfaceSunken: '#101015',
-  border: '#302E38',
-  borderStrong: '#423F4C',
+  // The 2026 look: deep navy rather than black, so cyan and violet sit on
+  // something with a little colour in it instead of a void.
+  bg: '#0A1118',
+  surface: '#121D26',
+  surfaceRaised: '#17242F',
+  surfaceSunken: '#070D12',
+  border: '#1C2A35',
+  borderStrong: '#29404E',
 
-  text: '#F5F3F0',
-  textMuted: '#A5A0AA',
-  textFaint: '#77727E',
-  textInverse: '#16151A',
+  text: '#EAF4F8',
+  textMuted: '#8CA3B3',
+  textFaint: '#5C7688',
+  textInverse: '#06111A',
 
-  primary: '#8B7CFF',
-  primaryText: '#16151A',
-  primarySoft: 'rgba(139, 124, 255, 0.16)',
-  primaryBorder: 'rgba(139, 124, 255, 0.36)',
+  // Cyan is the action colour: every primary CTA, the active employee tab.
+  primary: '#00D3FF',
+  primaryText: '#06111A',
+  primarySoft: 'rgba(0, 211, 255, 0.12)',
+  primaryBorder: 'rgba(0, 211, 255, 0.35)',
 
-  accent: '#FF8A6B',
-  accentSoft: 'rgba(255, 138, 107, 0.16)',
+  // Violet is reserved for anything a model produced or manager mode. The
+  // rule is visual honesty: if it is violet, a person did not write it.
+  accent: '#7B5CFF',
+  accentSoft: 'rgba(123, 92, 255, 0.16)',
 
-  success: '#2FD69B',
-  successSoft: 'rgba(47, 214, 155, 0.16)',
-  warning: '#FFB020',
-  warningSoft: 'rgba(255, 176, 32, 0.16)',
-  danger: '#FF6B6B',
-  dangerSoft: 'rgba(255, 107, 107, 0.16)',
-  info: '#8B7CFF',
-  infoSoft: 'rgba(139, 124, 255, 0.16)',
+  success: '#3DDC97',
+  successSoft: 'rgba(61, 220, 151, 0.14)',
+  warning: '#F5B840',
+  warningSoft: 'rgba(245, 184, 64, 0.14)',
+  danger: '#FF3D8A',
+  dangerSoft: 'rgba(255, 61, 138, 0.14)',
+  info: '#00D3FF',
+  infoSoft: 'rgba(0, 211, 255, 0.12)',
 
-  present: '#2FD69B',
-  late: '#FFB020',
-  absent: '#FF6B6B',
-  pending: '#8B7CFF',
-  pendingSoft: 'rgba(139, 124, 255, 0.18)',
+  present: '#3DDC97',
+  late: '#F5B840',
+  absent: '#FF3D8A',
+  pending: '#7B5CFF',
+  pendingSoft: 'rgba(123, 92, 255, 0.16)',
 
-  skeleton: '#272630',
-  skeletonHighlight: '#32313C',
-  scrim: 'rgba(0, 0, 0, 0.58)',
+  skeleton: '#17242F',
+  skeletonHighlight: '#22323E',
+  scrim: 'rgba(3, 8, 12, 0.66)',
 }
 
 export const palettes = { light, dark } as const
@@ -194,6 +196,8 @@ export type Scheme = keyof typeof palettes
  * every shared component are already correct.
  */
 const FOLLOW_SYSTEM_APPEARANCE = false
+/** The scheme every screen renders in while the system setting is not followed. */
+const FIXED_SCHEME: Scheme = 'dark'
 
 /**
  * The palette for the current system appearance.
@@ -209,19 +213,17 @@ export function useColour(): Palette {
 
 export function useScheme(): Scheme {
   const system = useColorScheme()
-  if (!FOLLOW_SYSTEM_APPEARANCE) return 'light'
+  if (!FOLLOW_SYSTEM_APPEARANCE) return FIXED_SCHEME
   return system === 'dark' ? 'dark' : 'light'
 }
 
 /**
- * The light palette as a plain object.
- *
- * For module-scope `StyleSheet.create` where a hook cannot reach, and for the
- * handful of places that are light-only regardless (the splash, which runs
- * before React has mounted anything). Anything a user can look at in dark mode
- * must use `useColour()` instead.
+ * The fixed-scheme palette as a plain object, for module-scope
+ * `StyleSheet.create` where a hook cannot reach. It is the same palette
+ * `useColour()` returns while the system setting is not followed, so static
+ * and hook-driven colour agree on every screen.
  */
-export const colour = light
+export const colour = palettes[FIXED_SCHEME]
 
 /**
  * 4pt scale. `lg` is the default gap between unrelated blocks and `md` inside
@@ -275,7 +277,9 @@ const MONO = Platform.select({
 export const font = {
   family: FAMILY,
   mono: MONO,
-  size: { xs: 12, sm: 13, md: 15, lg: 18, xl: 22, xxl: 30, display: 44, hero: 56 },
+  // Trimmed after the first device build: the mockups read big on a laptop
+  // and too big in the hand. Body is 14, the greeting 36; nothing above 44.
+  size: { xs: 11, sm: 12, md: 14, lg: 16, xl: 19, xxl: 26, display: 36, hero: 44 },
   weight: {
     regular: '400',
     medium: '500',
@@ -296,7 +300,7 @@ export const font = {
  * the border instead, because shadow on a dark ground is mostly invisible
  * effort.
  */
-export function shadow(scheme: Scheme = 'light') {
+export function shadow(scheme: Scheme = 'dark') {
   if (scheme === 'dark') {
     return {
       card: Platform.select({
@@ -348,8 +352,8 @@ export function shadow(scheme: Scheme = 'light') {
 
 /** Back-compat for screens not yet migrated off the static export. */
 export const elevation = {
-  card: shadow('light').card,
-  glow: shadow('light').lifted,
+  card: shadow('dark').card,
+  glow: shadow('dark').lifted,
 } as const
 
 /**
@@ -379,7 +383,7 @@ export const motion = {
 
 export const MAX_CONTENT_WIDTH = 560
 
-export function statusColour(status: string, c: Palette = light): string {
+export function statusColour(status: string, c: Palette = dark): string {
   switch (status) {
     case 'present':
     case 'approved':

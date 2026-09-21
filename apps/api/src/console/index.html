@@ -34,8 +34,20 @@
     --mono: 'Space Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   }
   * { box-sizing: border-box; }
+  /*
+   * App shell, not a document. html/body are exactly the viewport and never
+   * scroll; the frame below is 100% of that, and only the content pane inside
+   * it scrolls. That is what keeps the nav at the top and the frame's bottom
+   * edge on screen at every size — on a short laptop the sidebar was being cut
+   * off and on a phone the whole page scrolled the nav away.
+   *
+   * 100dvh where supported: on a phone browser 100vh includes the space under
+   * the URL bar, which pushes the bottom of the frame off screen by exactly
+   * the bar's height. dvh tracks the bar; vh is the fallback.
+   */
+  html, body { height: 100%; margin: 0; overflow: hidden; }
   body {
-    margin: 0; background: var(--bg); color: var(--text);
+    background: var(--bg); color: var(--text);
     font: 15px/1.5 var(--sans);
   }
   a { color: var(--primary); }
@@ -60,7 +72,10 @@
   /* The old top-bar nav was a flex row. In a rail it has to stack, and the
      group headings between the buttons are flex children too, so the direction
      has to be set on the nav itself rather than left to the buttons. */
-  .sidebar nav { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .sidebar nav {
+    display: flex; flex-direction: column; gap: 2px; min-width: 0;
+    flex: 1; min-height: 0; overflow-y: auto;
+  }
   nav button {
     background: none; border: 0; padding: 16px 12px; cursor: pointer;
     font: inherit; font-size: 14px; color: var(--muted);
@@ -105,6 +120,7 @@
   tbody tr:hover { background: var(--surface-alt); }
   .table-wrap { overflow-x: auto; }
 
+  code.cred { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 15px; letter-spacing: 1px; background: var(--primary-soft); color: var(--primary); padding: 3px 8px; border-radius: 6px; user-select: all; }
   .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; }
   .pill.ok { background: var(--success-soft); color: var(--success); }
   .pill.warn { background: var(--warning-soft); color: var(--warning); }
@@ -140,18 +156,28 @@
    * layer rather than a fallback attribute.
    * ---------------------------------------------------------------------- */
 
+  /* One centred column: welcome above, card below, both over the backdrop.
+     The form stays first in the markup so a keyboard or screen-reader user
+     reaches it before the welcome copy; `order` puts the welcome above it
+     visually. */
   .signin-shell {
-    position: fixed; inset: 0; display: grid;
-    grid-template-columns: 1fr minmax(380px, 460px);
-    overflow: hidden;
+    position: fixed; inset: 0; display: flex; flex-direction: column;
+    align-items: center; gap: 8px;
+    overflow: auto; padding: 32px 20px;
   }
-  /* Placed rather than reordered. The form stays first in the markup so a
-     keyboard or screen-reader user reaches the thing they came for before the
-     welcome copy; grid puts it on the right visually. */
-  .signin-panel { grid-column: 2; grid-row: 1; }
-  .signin-hero  { grid-column: 1; grid-row: 1; }
+  /* Centred via auto margins rather than justify-content: a centred flex
+     column clips whatever overflows the top, and on a short screen the form's
+     first field would be unreachable. Auto margins collapse to zero and let
+     the shell scroll instead. */
+  .signin-hero  { margin-top: auto; }
+  .signin-panel { margin-bottom: auto; }
+  #change-view .signin-panel { margin-top: auto; }  /* no hero above it */
+  .signin-panel { order: 2; width: 100%; max-width: 440px; padding: 0; }
+  .signin-hero  { order: 1; width: 100%; max-width: 640px; text-align: center; padding: 0 0 24px; align-items: center; }
 
-  .signin-bg { position: absolute; inset: 0; z-index: 0; }
+  /* `fixed` and `overflow:hidden` so the drifting gradient, which scales past
+     its box, never becomes scrollable space in the shell around it. */
+  .signin-bg { position: fixed; inset: 0; z-index: 0; overflow: hidden; }
   .signin-bg::after {
     /* Scrim. Without it the card and the headline fight the motion behind. */
     content: ''; position: absolute; inset: 0;
@@ -183,10 +209,9 @@
   .signin-panel {
     position: relative; z-index: 1;
     display: flex; align-items: center; justify-content: center;
-    padding: 32px;
   }
   .signin-card {
-    width: 100%; max-width: 380px;
+    width: 100%; max-width: 440px; margin: 0 auto;
     background: rgba(255,255,255,.97);
     border: 1px solid rgba(255,255,255,.5);
     border-radius: var(--radius-lg);
@@ -205,24 +230,24 @@
   .signin-hero {
     position: relative; z-index: 1;
     display: flex; flex-direction: column; justify-content: center;
-    padding: 48px 64px; color: #fff;
+    padding: 24px 32px 16px; color: #fff;
   }
   .signin-hero h2 {
-    margin: 0; font-size: clamp(34px, 4.6vw, 62px); line-height: 1.04;
-    letter-spacing: -.035em; font-weight: 700; max-width: 12ch;
+    margin: 0; font-size: clamp(32px, 4.2vw, 54px); line-height: 1.06;
+    letter-spacing: -.035em; font-weight: 700;
   }
   .signin-hero h2 em {
-    font-style: normal;
+    display: block; font-style: normal;
     background: linear-gradient(92deg, #9C8BFF 0%, #FF9B7F 100%);
     -webkit-background-clip: text; background-clip: text; color: transparent;
   }
   .signin-hero p {
-    margin: 22px 0 0; max-width: 46ch; font-size: 17px; line-height: 1.6;
+    margin: 16px auto 0; max-width: 46ch; font-size: 16px; line-height: 1.6;
     color: rgba(255,255,255,.72);
   }
   .signin-hero ul {
-    list-style: none; margin: 34px 0 0; padding: 0;
-    display: flex; flex-wrap: wrap; gap: 10px;
+    list-style: none; margin: 22px 0 0; padding: 0;
+    display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
   }
   .signin-hero li {
     font-size: 13px; padding: 7px 13px; border-radius: 999px;
@@ -231,24 +256,35 @@
   }
 
   /* Below this the split stops helping and the hero just pushes the form off. */
-  @media (max-width: 900px) {
-    .signin-shell { grid-template-columns: 1fr; }
-    .signin-panel { grid-column: 1; }
-    .signin-hero { display: none; }
+  @media (max-width: 600px) {
+    .signin-hero ul { display: none; }
+    .signin-hero h2 { font-size: 30px; }
+  }
+  /* A laptop with the browser chrome open is ~750px tall. The form is what
+     the page is for; the welcome copy gives way first. */
+  @media (max-height: 860px) {
+    .signin-hero ul { display: none; }
+    .signin-hero { padding: 16px 24px 8px; }
+    .signin-hero h2 { font-size: clamp(28px, 3.4vw, 40px); }
+    .signin-hero p { margin-top: 10px; font-size: 15px; }
+    .signin-card { padding: 24px 28px; }
   }
 
   /* -------------------------------------------------------------------------
    * Shell — sidebar
    * ---------------------------------------------------------------------- */
 
-  .shell { display: grid; grid-template-columns: 248px 1fr; min-height: 100vh; }
+  .shell {
+    display: grid; grid-template-columns: 248px minmax(0, 1fr);
+    height: 100vh; height: 100dvh;
+  }
 
   .sidebar {
     background: #17132E;
     border-right: 1px solid rgba(255,255,255,.07);
     padding: 22px 14px;
     display: flex; flex-direction: column; gap: 6px;
-    position: sticky; top: 0; height: 100vh; overflow-y: auto;
+    height: 100%; min-height: 0; overflow: hidden;
   }
   .sidebar .brand { display: flex; align-items: center; gap: 10px; padding: 4px 10px 2px; }
   .sidebar .brand strong { color: #fff; font-size: 16px; letter-spacing: -.01em; }
@@ -283,7 +319,7 @@
     background: var(--nav-accent, var(--primary)); opacity: .55;
   }
   .sidebar button.nav-item[aria-current="true"] .ico { opacity: 1; }
-  .sidebar .grow { flex: 1; }
+  .sidebar .grow { display: none; } /* nav's flex:1 does this now */
   .sidebar .signout {
     background: rgba(255,255,255,.07); border: 1px solid rgba(255,255,255,.12);
     color: rgba(255,255,255,.82); border-radius: 10px; padding: 10px;
@@ -291,14 +327,19 @@
   }
   .sidebar .signout:hover { background: rgba(255,255,255,.12); }
 
-  .content { min-width: 0; }
+  .content { min-width: 0; height: 100%; overflow-y: auto; }
 
   @media (max-width: 860px) {
-    .shell { grid-template-columns: 1fr; }
+    .shell { grid-template-columns: 1fr; grid-template-rows: auto minmax(0, 1fr); }
     .sidebar {
-      position: static; height: auto; flex-direction: row; overflow-x: auto;
+      height: auto; flex-direction: row; overflow-x: auto; overflow-y: hidden;
       align-items: center; gap: 4px; padding: 10px;
     }
+    .sidebar nav { flex: 1; overflow-y: hidden; }
+    .sidebar .signout { white-space: nowrap; padding: 8px 12px; flex: none; }
+    main { padding: 16px; }
+    .wizard-foot { flex-direction: column; align-items: stretch; }
+    .page-head { flex-direction: column; align-items: flex-start; }
     .sidebar .brand, .sidebar .org, .sidebar .group, .sidebar .grow { display: none; }
     .sidebar nav { flex-direction: row; overflow-x: auto; }
     .sidebar button.nav-item { width: auto; white-space: nowrap; }
@@ -371,6 +412,38 @@
   .kind:hover { border-color: var(--border-strong); }
   .kind[aria-pressed="true"] { border-color: var(--tint, var(--primary)); background: var(--surface); }
   .kind[aria-pressed="true"]::before { opacity: 1; }
+  /* Setup wizard */
+  .wizard-rail {
+    display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0 0 22px;
+  }
+  /* Four across is only readable with room for a sentence per card. Below
+     that, two rows of two — and this sits after the base rule on purpose,
+     because an earlier override loses to it on source order. */
+  @media (max-width: 860px) {
+    .wizard-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  .wstep {
+    padding: 12px 14px; border-radius: var(--radius); border: 1px solid var(--border);
+    background: var(--surface); position: relative; overflow: hidden;
+  }
+  .wstep::before {
+    content: ''; position: absolute; left: 0; right: 0; top: 0; height: 3px;
+    background: var(--border);
+  }
+  .wstep.done::before { background: var(--success); }
+  .wstep.current::before { background: var(--primary); }
+  .wstep .n { font-family: var(--mono); font-size: 11px; color: var(--faint); letter-spacing: .12em; }
+  .wstep strong { display: block; margin-top: 4px; font-size: 14px; }
+  .wstep.done strong::after { content: ' ✓'; color: var(--success); }
+  .wizard-foot {
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    margin-top: 8px; flex-wrap: wrap;
+  }
+  .setup-banner {
+    background: var(--primary-soft); border: 1px solid var(--primary);
+    border-radius: var(--radius); padding: 12px 16px; margin-bottom: 18px;
+    display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap;
+  }
   .modal-scrim {
     position: fixed; inset: 0; background: var(--scrim, rgba(28,27,26,.45));
     display: flex; align-items: flex-start; justify-content: center;
@@ -423,13 +496,20 @@
         <span>Quanti HR</span>
       </div>
       <h1>Sign in</h1>
-      <p class="hint">We send a one-time link — there are no passwords.</p>
-      <label for="email">Work email</label>
-      <input id="email" type="email" placeholder="you@company.com" autocomplete="email" />
-      <div class="actions">
-        <button class="btn" id="send-link">Email me a link</button>
-      </div>
+      <p class="hint">Use your password, or we can email you a one-time link.</p>
+      <form id="signin-form" novalidate>
+        <label for="email">Work email</label>
+        <input id="email" type="email" placeholder="you@company.com" autocomplete="username" />
+        <label for="password" style="margin-top:10px">Password</label>
+        <input id="password" type="password" placeholder="Your password or temporary password" autocomplete="current-password" />
+        <div class="actions">
+          <button class="btn" id="sign-in" type="submit">Sign in</button>
+          <button class="btn ghost" id="send-link" type="button">Email me a link instead</button>
+        </div>
+      </form>
       <div id="signin-msg"></div>
+      <div id="g-signin" style="margin-top:14px"></div>
+      <p class="hint" style="margin:16px 0 0">New company? <a href="#" id="go-signup">Create your account</a></p>
     </div>
   </div>
 
@@ -450,6 +530,85 @@
 </div>
 
 <!-- App -->
+<div id="signup-view" class="signin-shell hidden">
+  <div class="signin-bg"><div class="signin-gradient"></div></div>
+  <div class="signin-panel">
+    <div class="signin-card">
+      <div class="signin-mark">
+        <span class="dot"></span><span class="dot accent"></span>
+        <span>Quanti HR</span>
+      </div>
+      <h1>Create your company</h1>
+      <p class="hint">Sign up with your company's HR mailbox — an address that starts with <strong>hr</strong>. We send a code there to confirm it is yours.</p>
+      <form id="signup-form" novalidate>
+        <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
+          <div><label for="su-first">Your first name</label><input id="su-first" autocomplete="given-name" /></div>
+          <div><label for="su-last">Last name</label><input id="su-last" autocomplete="family-name" /></div>
+        </div>
+        <label for="su-org" style="margin-top:10px">Company name</label>
+        <input id="su-org" placeholder="Northbridge Logistics" autocomplete="organization" />
+        <label for="su-email" style="margin-top:10px">HR email</label>
+        <input id="su-email" type="email" placeholder="hr@yourcompany.com" autocomplete="username" />
+        <label for="su-password" style="margin-top:10px">Password</label>
+        <input id="su-password" type="password" placeholder="At least 10 characters" autocomplete="new-password" />
+        <div class="actions">
+          <button class="btn" id="su-submit" type="submit">Send me a code</button>
+          <button class="btn ghost" id="su-back" type="button">I have an account</button>
+        </div>
+      </form>
+      <div id="signup-msg"></div>
+    </div>
+  </div>
+</div>
+
+<div id="code-view" class="signin-shell hidden">
+  <div class="signin-bg"><div class="signin-gradient"></div></div>
+  <div class="signin-panel">
+    <div class="signin-card">
+      <div class="signin-mark">
+        <span class="dot"></span><span class="dot accent"></span>
+        <span>Quanti HR</span>
+      </div>
+      <h1>Enter the code</h1>
+      <p class="hint" id="code-hint">We sent a 6-digit code to your HR address. It expires in 15 minutes.</p>
+      <form id="code-form" novalidate>
+        <label for="code-input">Code</label>
+        <input id="code-input" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="123456" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-size:24px;letter-spacing:8px;text-align:center" />
+        <div class="actions">
+          <button class="btn" id="code-submit" type="submit">Confirm and create</button>
+          <button class="btn ghost" id="code-resend" type="button">Send a new code</button>
+        </div>
+      </form>
+      <div id="code-msg"></div>
+    </div>
+  </div>
+</div>
+
+<div id="change-view" class="signin-shell hidden">
+  <div class="signin-bg"><div class="signin-gradient"></div></div>
+  <div class="signin-panel">
+    <div class="signin-card">
+      <div class="signin-mark">
+        <span class="dot"></span><span class="dot accent"></span>
+        <span>Quanti HR</span>
+      </div>
+      <h1>Choose your password</h1>
+      <p class="hint">The one you signed in with was temporary. Pick your own before you go on — at least 10 characters; a short sentence works well.</p>
+      <form id="change-form" novalidate>
+        <label for="new-password">New password</label>
+        <input id="new-password" type="password" autocomplete="new-password" />
+        <label for="new-password-2" style="margin-top:10px">Type it again</label>
+        <input id="new-password-2" type="password" autocomplete="new-password" />
+        <div class="actions">
+          <button class="btn" id="change-submit" type="submit">Save and continue</button>
+          <button class="btn ghost" id="change-signout" type="button">Sign out</button>
+        </div>
+      </form>
+      <div id="change-msg"></div>
+    </div>
+  </div>
+</div>
+
 <div id="app-view" class="hidden">
   <div class="shell">
     <aside class="sidebar">
@@ -528,10 +687,30 @@ function notice(kind, message) { return `<div class="notice ${kind}">${esc(messa
 
 // --- Sign in ---------------------------------------------------------------
 
+$('#signin-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const email = $('#email').value.trim()
+  const password = $('#password').value
+  const box = $('#signin-msg')
+  if (!email || !password) { box.innerHTML = notice('bad', 'Enter your email and password, or ask for a link.'); return }
+  box.innerHTML = ''
+  $('#sign-in').disabled = true
+  try {
+    const s = await req('/v1/auth/password', {
+      method: 'POST',
+      body: { email, password, deviceId: deviceId(), deviceName: 'HR Console', platform: 'web' },
+    })
+    store.access = s.accessToken; store.refresh = s.refreshToken
+    $('#password').value = ''
+    await boot()
+  } catch (err) { box.innerHTML = notice('bad', err.message) }
+  finally { $('#sign-in').disabled = false }
+})
+
 $('#send-link').addEventListener('click', async () => {
   const email = $('#email').value.trim()
   const box = $('#signin-msg')
-  if (!email) return
+  if (!email) { box.innerHTML = notice('bad', 'Enter your work email first.'); return }
   box.innerHTML = ''
   try {
     const r = await req('/v1/auth/magic-link', { method: 'POST', body: { email } })
@@ -565,6 +744,140 @@ function deviceId() {
 $('#sign-out').addEventListener('click', () => {
   store.access = null; store.refresh = null; location.reload()
 })
+// --- Google sign-in ----------------------------------------------------------
+//
+// Identity only: Google says who you are, the API checks HR has added you.
+// The button appears only when a deployment has configured a client id; the
+// placeholder below is replaced by the server when it serves this page.
+
+const GOOGLE_CLIENT_ID = '__GOOGLE_SSO_WEB_CLIENT_ID__'
+
+async function signInWithGoogle(credential) {
+  const box = $('#signin-msg')
+  box.innerHTML = ''
+  try {
+    const s = await req('/v1/auth/sso/google', {
+      method: 'POST',
+      body: { idToken: credential, deviceId: deviceId(), deviceName: 'HR Console', platform: 'web' },
+    })
+    store.access = s.accessToken; store.refresh = s.refreshToken
+    await boot()
+  } catch (err) {
+    box.innerHTML = notice('bad', err.body?.details?.reason === 'not_invited'
+      ? err.message
+      : formatError(err))
+  }
+}
+
+if (GOOGLE_CLIENT_ID && !GOOGLE_CLIENT_ID.startsWith('__')) {
+  const gsi = document.createElement('script')
+  gsi.src = 'https://accounts.google.com/gsi/client'
+  gsi.async = true
+  gsi.onload = () => {
+    window.google.accounts.id.initialize({
+      client_id: GOOGLE_CLIENT_ID,
+      callback: (r) => void signInWithGoogle(r.credential),
+    })
+    window.google.accounts.id.renderButton($('#g-signin'), {
+      theme: 'outline', size: 'large', width: 376, text: 'continue_with', shape: 'pill',
+    })
+  }
+  document.head.appendChild(gsi)
+}
+
+// --- Create a company -------------------------------------------------------
+
+const signup = { id: null, email: '', password: '' }
+const showShell = (id) => {
+  for (const v of ['#signin-view', '#signup-view', '#code-view', '#change-view']) $(v).classList.add('hidden')
+  $('#app-view').classList.add('hidden')
+  $(id).classList.remove('hidden')
+}
+
+$('#go-signup').addEventListener('click', (e) => { e.preventDefault(); showShell('#signup-view'); $('#su-first').focus() })
+$('#su-back').addEventListener('click', () => showShell('#signin-view'))
+
+$('#signup-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const box = $('#signup-msg')
+  box.innerHTML = ''
+  const payload = {
+    firstName: $('#su-first').value.trim(),
+    lastName: $('#su-last').value.trim(),
+    orgName: $('#su-org').value.trim(),
+    email: $('#su-email').value.trim(),
+    password: $('#su-password').value,
+  }
+  if (!payload.firstName || !payload.lastName || !payload.orgName || !payload.email || !payload.password) {
+    box.innerHTML = notice('bad', 'Every field is needed.'); return
+  }
+  $('#su-submit').disabled = true
+  try {
+    const r = await req('/v1/signup/start', { method: 'POST', body: payload })
+    signup.id = r.signupId; signup.email = payload.email; signup.password = payload.password
+    $('#code-hint').textContent = r.message
+    showShell('#code-view')
+    $('#code-msg').innerHTML = r.devCode ? notice('info', `Development: your code is ${r.devCode}`) : ''
+    $('#code-input').value = ''; $('#code-input').focus()
+  } catch (err) { box.innerHTML = notice('bad', formatError(err)) }
+  finally { $('#su-submit').disabled = false }
+})
+
+$('#code-resend').addEventListener('click', async () => {
+  const box = $('#code-msg')
+  try {
+    const r = await req('/v1/signup/resend', { method: 'POST', body: { signupId: signup.id } })
+    box.innerHTML = notice('info', r.message) + (r.devCode ? notice('info', `Development: your code is ${r.devCode}`) : '')
+  } catch (err) { box.innerHTML = notice('bad', formatError(err)) }
+})
+
+$('#code-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const box = $('#code-msg')
+  const code = $('#code-input').value.trim()
+  if (!/^\d{6}$/.test(code)) { box.innerHTML = notice('bad', 'Six digits.'); return }
+  $('#code-submit').disabled = true
+  try {
+    await req('/v1/signup/verify', { method: 'POST', body: { signupId: signup.id, code } })
+    // Straight in with the password they just chose; the wizard takes it from here.
+    const s = await req('/v1/auth/password', {
+      method: 'POST',
+      body: { email: signup.email, password: signup.password, deviceId: deviceId(), deviceName: 'HR Console', platform: 'web' },
+    })
+    store.access = s.accessToken; store.refresh = s.refreshToken
+    signup.password = ''
+    await boot()
+  } catch (err) { box.innerHTML = notice('bad', formatError(err)) }
+  finally { $('#code-submit').disabled = false }
+})
+
+$('#change-signout').addEventListener('click', () => {
+  store.access = null; store.refresh = null; location.reload()
+})
+
+// Used by the forced-change gate and by Settings. `currentPassword` is
+// omitted while the account is still on its temporary password — the
+// server does not ask for what the person was only ever handed once.
+async function changePassword({ currentPassword, newPassword, again }) {
+  if (newPassword !== again) throw new Error('Those two do not match.')
+  await req('/v1/auth/password/change', {
+    method: 'POST',
+    body: { ...(currentPassword ? { currentPassword } : {}), newPassword },
+  })
+}
+
+$('#change-form').addEventListener('submit', async (e) => {
+  e.preventDefault()
+  const box = $('#change-msg')
+  box.innerHTML = ''
+  $('#change-submit').disabled = true
+  try {
+    await changePassword({ newPassword: $('#new-password').value, again: $('#new-password-2').value })
+    $('#new-password').value = ''; $('#new-password-2').value = ''
+    await boot()
+  } catch (err) { box.innerHTML = notice('bad', formatError(err)) }
+  finally { $('#change-submit').disabled = false }
+})
 
 // --- Shell -----------------------------------------------------------------
 
@@ -596,7 +909,7 @@ async function boot() {
   if (token) { history.replaceState({}, '', location.pathname); return verify(token) }
 
   if (!store.access && store.refresh) await refreshSession()
-  if (!store.access) { $('#signin-view').classList.remove('hidden'); $('#app-view').classList.add('hidden'); return }
+  if (!store.access) { $('#signin-view').classList.remove('hidden'); $('#app-view').classList.add('hidden'); $('#change-view').classList.add('hidden'); return }
 
   try {
     state.me = await req('/v1/me')
@@ -610,13 +923,43 @@ async function boot() {
     return
   }
 
-  $('#signin-view').classList.add('hidden')
+  for (const v of ['#signin-view', '#signup-view', '#code-view']) $(v).classList.add('hidden')
+
+  // A temporary password opens exactly one screen. Nothing of the org is
+  // fetched or shown until it has been replaced.
+  if (state.me.user?.mustChangePassword) {
+    $('#app-view').classList.add('hidden')
+    $('#change-view').classList.remove('hidden')
+    $('#new-password').focus()
+    return
+  }
+  $('#change-view').classList.add('hidden')
   $('#app-view').classList.remove('hidden')
   $('#org-name').textContent = state.me.config.org.name
 
+  // Setup is a gate, not a suggestion. Until it is complete the sidebar
+  // holds only the wizard and the two pages it hands off to; everything
+  // else appears the moment the org can actually run.
+  try {
+    state.onboarding = await req('/v1/admin/onboarding')
+  } catch {
+    state.onboarding = null
+  }
+  paintNav()
+  await show(state.onboarding && !state.onboarding.completedAt ? 'setup' : 'overview')
+}
+
+const SETUP_TABS = [
+  { id: 'setup',     label: 'Setup',       group: null, accent: '#5B4BE8' },
+  { id: 'employees', label: 'Employees',   group: 'Onboarding', accent: '#2C8FD6' },
+  { id: 'import',    label: 'Bulk import', group: 'Onboarding', accent: '#2C8FD6' },
+]
+const setupLocked = () => !!state.onboarding && !state.onboarding.completedAt
+
+function paintNav() {
   const nav = $('#nav'); nav.innerHTML = ''
   let lastGroup
-  for (const tab of TABS) {
+  for (const tab of setupLocked() ? SETUP_TABS : TABS) {
     if (tab.group && tab.group !== lastGroup) {
       nav.appendChild(el(`<div class="group">${esc(tab.group)}</div>`))
     }
@@ -628,10 +971,14 @@ async function boot() {
     b.addEventListener('click', () => show(tab.id))
     nav.appendChild(b)
   }
-  await show('overview')
 }
 
+window.__show = (id) => show(id)
+document.addEventListener('click', (e) => {
+  if (e.target.closest?.('.back-to-setup')) { e.preventDefault(); void show('setup') }
+})
 async function show(tabId) {
+  if (setupLocked() && !SETUP_TABS.some((t) => t.id === tabId)) tabId = 'setup'
   for (const b of $('#nav').querySelectorAll('button.nav-item')) {
     b.setAttribute('aria-current', String(b.dataset.tab === tabId))
   }
@@ -703,14 +1050,477 @@ function openModal({ title, body, confirmLabel, onConfirm }) {
   return { close, scrim }
 }
 
+/**
+ * Credentials go to the person, never to HR. What HR sees is who was mailed.
+ * The reset button on the employee row is the recovery path.
+ */
+function showMailed(list) {
+  const names = list.map((c) => c.email ?? [c.firstName, c.lastName].filter(Boolean).join(' '))
+  const body = el(`<div>
+    <p class="hint" style="margin-top:0">
+      ${names.length === 1
+        ? `Two emails are on their way to <strong>${esc(names[0])}</strong>: a welcome, and their sign-in details with a temporary password.`
+        : `${names.length} people have been emailed a welcome and their sign-in details.`}
+      Each person chooses their own password the first time they sign in. The temporary one is never shown here.
+    </p>
+    ${names.length > 1 ? `<ul style="margin:0;padding-left:18px">${names.map((n) => `<li>${esc(n)}</li>`).join('')}</ul>` : ''}
+  </div>`)
+  const { scrim } = openModal({ title: 'Sign-in details sent', body, confirmLabel: 'Done', onConfirm: (close) => close() })
+  scrim.querySelector('[data-act="cancel"]').remove()
+}
+
 const VIEWS = {}
+
+const WIZARD = [
+  { id: 'basics',     label: 'Company',    blurb: 'Where and when people work.' },
+  { id: 'leave',      label: 'Leave',      blurb: 'The types of leave you offer.' },
+  { id: 'handbook',   label: 'Policies',   blurb: 'What the assistant answers from.' },
+  { id: 'managers',   label: 'Managers',   blurb: 'Who approves and reviews.' },
+  { id: 'departments', label: 'Departments', blurb: 'Teams and their heads.' },
+  { id: 'organogram', label: 'Organogram', blurb: 'Who reports to whom.' },
+  { id: 'team',       label: 'Team',       blurb: 'Everyone else.' },
+]
+
+VIEWS.setup = async () => {
+  await refreshReference()
+  const ob = state.onboarding ?? (state.onboarding = await req('/v1/admin/onboarding'))
+  const doneSet = new Set(ob.steps.filter((x) => x.done).map((x) => x.step))
+  let current = WIZARD.find((w) => !doneSet.has(w.id))?.id ?? 'team'
+
+  const section = el(`<section>
+    <div class="page-head">
+      <div>
+        <h2>Set up ${esc(ob.organisation.name)}</h2>
+        <p class="lede">Seven steps, and the dashboard opens when they are done. Everything here can be changed later from the sidebar.</p>
+      </div>
+    </div>
+    <div id="wiz-missing"></div>
+    <div class="wizard-rail" id="wiz-rail"></div>
+    <div id="wiz-body"></div>
+  </section>`)
+
+  const rail = $('#wiz-rail', section)
+  const body = $('#wiz-body', section)
+
+  const paintRail = () => {
+    rail.innerHTML = WIZARD.map((w, i) => `
+      <button class="wstep ${doneSet.has(w.id) ? 'done' : ''} ${current === w.id ? 'current' : ''}"
+              data-step="${w.id}" style="text-align:left;cursor:pointer;font:inherit">
+        <div class="n">STEP ${i + 1}</div>
+        <strong>${esc(w.label)}</strong>
+        <div class="hint" style="margin:2px 0 0">${esc(w.blurb)}</div>
+      </button>`).join('')
+    for (const b of rail.querySelectorAll('.wstep')) {
+      b.addEventListener('click', () => { current = b.dataset.step; paint() })
+    }
+  }
+
+  const markDone = async (step) => {
+    await req(`/v1/admin/onboarding/steps/${step}`, { method: 'POST' })
+    doneSet.add(step)
+    const next = WIZARD[WIZARD.findIndex((w) => w.id === step) + 1]
+    current = next ? next.id : step
+    state.onboarding = await req('/v1/admin/onboarding')
+    paint()
+  }
+
+  const foot = (step, { canContinue = true, label = 'Continue' } = {}) => `
+    <div class="wizard-foot">
+      <span class="muted" style="font-size:13px">${doneSet.has(step) ? 'Done — you can still change this.' : ''}</span>
+      <button class="btn" data-done="${step}" ${canContinue ? '' : 'disabled'}>${esc(label)}</button>
+    </div>`
+
+  // ---- Step 1: company basics --------------------------------------------
+  const basics = async () => {
+    const org = await req('/v1/admin/org')
+    const locs = state.locations
+    body.innerHTML = `
+      <div class="card">
+        <h3>Company</h3>
+        <div class="grid">
+          <div><label>Company name</label><input id="b-name" value="${esc(org.name)}" /></div>
+          <div><label>Timezone</label><input id="b-tz" value="${esc(org.timezone)}" placeholder="Africa/Lagos" /></div>
+        </div>
+      </div>
+      <div class="card">
+        <h3>Where people check in</h3>
+        <p class="hint">At least one location with a geofence. Employees check in from inside the radius, so set it to the building, not the city.</p>
+        ${locs.length ? `<table><thead><tr><th>Name</th><th>Address</th><th>Radius</th></tr></thead><tbody>${
+          locs.map((l) => `<tr><td>${esc(l.name)}</td><td>${esc(l.address ?? '—')}</td><td>${l.geofenceRadiusM} m</td></tr>`).join('')
+        }</tbody></table>` : ''}
+        <div class="grid" style="margin-top:12px">
+          <div><label>Location name</label><input id="b-lname" placeholder="Head office" /></div>
+          <div><label>Address</label><input id="b-laddr" /></div>
+          <div><label>Latitude</label><input id="b-lat" type="number" step="0.000001" placeholder="6.4281" /></div>
+          <div><label>Longitude</label><input id="b-lng" type="number" step="0.000001" placeholder="3.4219" /></div>
+          <div><label>Geofence radius (m)</label><input id="b-rad" type="number" value="150" /></div>
+        </div>
+        <div class="actions"><button class="btn secondary" id="b-addloc">Add location</button></div>
+        <div id="b-msg"></div>
+      </div>
+      ${foot('basics', { canContinue: locs.length > 0, label: locs.length > 0 ? 'Save and continue' : 'Add a location to continue' })}`
+
+    $('#b-addloc', body).addEventListener('click', async () => {
+      try {
+        await req('/v1/admin/locations', { method: 'POST', body: {
+          name: $('#b-lname', body).value.trim(),
+          address: $('#b-laddr', body).value.trim() || undefined,
+          latitude: Number($('#b-lat', body).value),
+          longitude: Number($('#b-lng', body).value),
+          geofenceRadiusM: Number($('#b-rad', body).value || 150),
+        }})
+        await refreshReference(); await basics()
+      } catch (e) { $('#b-msg', body).innerHTML = notice('bad', formatError(e)) }
+    })
+    body.querySelector('[data-done="basics"]')?.addEventListener('click', async () => {
+      try {
+        await req('/v1/admin/org', { method: 'PATCH', body: {
+          name: $('#b-name', body).value.trim(), timezone: $('#b-tz', body).value.trim(),
+        }})
+        await markDone('basics')
+      } catch (e) { $('#b-msg', body).innerHTML = notice('bad', formatError(e)) }
+    })
+  }
+
+  // ---- Step 2: leave types -------------------------------------------------
+  const leave = async () => {
+    const types = state.leaveTypes
+    body.innerHTML = `
+      <div class="card">
+        <h3>Leave types</h3>
+        <p class="hint">Annual leave is the one everyone needs. Add the rest as you go — each one accrues on its own rule.</p>
+        ${types.length ? `<table><thead><tr><th>Type</th><th>Accrues</th><th>Days / year</th><th>Paid</th></tr></thead><tbody>${
+          types.map((t) => `<tr><td><span style="display:inline-block;width:10px;height:10px;border-radius:5px;background:${esc(t.colour)};margin-right:8px"></span>${esc(t.name)}</td><td>${esc(t.accrualMethod.replace(/_/g,' '))}</td><td>${t.accrualRate}</td><td>${t.isPaid ? 'Yes' : 'No'}</td></tr>`).join('')
+        }</tbody></table>` : ''}
+        <div class="grid" style="margin-top:12px">
+          <div><label>Name</label><input id="l-name" placeholder="Annual Leave" /></div>
+          <div><label>Accrual</label><select id="l-method">
+            <option value="annual_fixed">Fixed at year start</option>
+            <option value="monthly">Monthly</option>
+            <option value="annual_anniversary">On work anniversary</option>
+          </select></div>
+          <div><label>Days per year</label><input id="l-rate" type="number" step="0.5" value="20" /></div>
+          <div><label>Max balance</label><input id="l-max" type="number" step="0.5" placeholder="optional" /></div>
+          <div><label>Carry over up to</label><input id="l-carry" type="number" step="0.5" placeholder="optional" /></div>
+          <div><label>Min notice (days)</label><input id="l-notice" type="number" placeholder="optional" /></div>
+          <div><label>Colour</label><input id="l-colour" type="color" value="#5B4BE8" /></div>
+          <div><label>&nbsp;</label><label style="font-weight:400"><input type="checkbox" id="l-paid" checked /> Paid</label>
+            <label style="font-weight:400"><input type="checkbox" id="l-doc" /> Needs a document</label></div>
+        </div>
+        <div class="actions"><button class="btn secondary" id="l-add">Add leave type</button></div>
+        <div id="l-msg"></div>
+      </div>
+      ${foot('leave', { canContinue: types.length > 0, label: types.length > 0 ? 'Continue' : 'Add a leave type to continue' })}`
+
+    $('#l-add', body).addEventListener('click', async () => {
+      const opt = (id) => { const v = $(id, body).value; return v === '' ? null : Number(v) }
+      try {
+        await req('/v1/admin/leave-types', { method: 'POST', body: {
+          name: $('#l-name', body).value.trim(),
+          accrualMethod: $('#l-method', body).value,
+          accrualRate: Number($('#l-rate', body).value),
+          maxBalance: opt('#l-max'),
+          carryoverCap: opt('#l-carry'),
+          carryoverExpiryMonths: opt('#l-carry') === null ? null : 3,
+          minNoticeDays: opt('#l-notice'),
+          requiresDocument: $('#l-doc', body).checked,
+          isPaid: $('#l-paid', body).checked,
+          colour: $('#l-colour', body).value,
+        }})
+        await refreshReference(); await leave()
+      } catch (e) { $('#l-msg', body).innerHTML = notice('bad', formatError(e)) }
+    })
+    body.querySelector('[data-done="leave"]')?.addEventListener('click', () => markDone('leave'))
+  }
+
+  // ---- Step 3: policy handbook --------------------------------------------
+  const handbook = async () => {
+    const lib = await req('/v1/admin/policies')
+    body.innerHTML = `
+      <div class="card">
+        <h3>Policies</h3>
+        <p class="hint">
+          Upload the handbook and every policy you want employees to be able to ask about.
+          The assistant answers only from these, and cites the document and the line it used.
+          PDF, Word or plain text.
+        </p>
+        ${lib.documents.length ? `<table><thead><tr><th>Document</th><th>File</th><th>Text</th><th></th></tr></thead><tbody>${
+          lib.documents.map((d) => `<tr>
+            <td>${esc(d.title)}</td><td class="muted">${esc(d.filename)}</td>
+            <td>${d.status === 'empty'
+              ? '<span class="pill warn">no text found</span>'
+              : `<span class="num">${(d.charCount / 1000).toFixed(1)}k chars</span>`}</td>
+            <td><button class="btn ghost h-del" data-id="${d.id}">Remove</button></td>
+          </tr>`).join('')
+        }</tbody></table>` : ''}
+        <div class="grid" style="margin-top:12px">
+          <div><label>Title</label><input id="h-title" placeholder="Employee Handbook 2026" /></div>
+          <div><label>File</label><input id="h-file" type="file" accept=".pdf,.docx,.txt,.md" /></div>
+        </div>
+        <div class="actions"><button class="btn secondary" id="h-up">Upload</button></div>
+        <div id="h-msg"></div>
+        ${lib.documents.some((d) => d.status === 'empty')
+          ? notice('warn', 'A document produced no text — usually a scanned PDF. Re-save it as a text PDF or a Word file and upload again; the assistant cannot read an image.')
+          : ''}
+      </div>
+      ${foot('handbook', { label: lib.documents.length ? 'Continue' : 'Skip for now' })}`
+
+    $('#h-up', body).addEventListener('click', async () => {
+      const file = $('#h-file', body).files?.[0]
+      const title = $('#h-title', body).value.trim() || file?.name?.replace(/\.[^.]+$/, '')
+      if (!file) { $('#h-msg', body).innerHTML = notice('warn', 'Choose a file first.'); return }
+      $('#h-msg', body).innerHTML = '<p class="muted">Reading the document…</p>'
+      try {
+        const buf = new Uint8Array(await file.arrayBuffer())
+        let bin = ''; for (let i = 0; i < buf.length; i += 1) bin += String.fromCharCode(buf[i])
+        await req('/v1/admin/policies', { method: 'POST', body: {
+          title, filename: file.name, mimeType: file.type || 'application/octet-stream', contentBase64: btoa(bin),
+        }})
+        await handbook()
+      } catch (e) { $('#h-msg', body).innerHTML = notice('bad', formatError(e)) }
+    })
+    for (const b of body.querySelectorAll('.h-del')) {
+      b.addEventListener('click', async () => {
+        await req(`/v1/admin/policies/${b.dataset.id}`, { method: 'DELETE' }); await handbook()
+      })
+    }
+    body.querySelector('[data-done="handbook"]')?.addEventListener('click', () => markDone('handbook'))
+  }
+
+  // ---- People helpers -------------------------------------------------------
+  const nextNumber = () => {
+    const nums = state.employees
+      .map((e) => Number((e.employeeNumber.match(/(\d+)$/) ?? [])[1]))
+      .filter((n) => Number.isFinite(n))
+    const prefix = (state.employees[0]?.employeeNumber.match(/^(.*?)(\d+)$/) ?? [])[1] ?? 'QH-'
+    return `${prefix}${String((nums.length ? Math.max(...nums) : 0) + 1).padStart(3, '0')}`
+  }
+  const me = state.employees.find((e) => e.id === state.me.employee.id)
+  const isManager = (e) => (e.roles ?? []).includes('manager') || (e.roles ?? []).includes('owner')
+
+  // ---- Step 4: managers --------------------------------------------------------
+  const managers = async () => {
+    const list = state.employees.filter((e) => (e.roles ?? []).includes('manager'))
+    body.innerHTML = `
+      <div class="card">
+        <h3>Managers</h3>
+        <p class="hint">
+          The people who approve leave, review attendance and host meetings for their teams.
+          Add them first: everyone you onboard after this reports to one of them.
+          Each gets a welcome email and their sign-in details.
+        </p>
+        ${list.length ? `<table><thead><tr><th>#</th><th>Name</th><th>Email</th><th>Title</th></tr></thead><tbody>${
+          list.map((e) => `<tr><td>${esc(e.employeeNumber)}</td><td>${esc(e.firstName)} ${esc(e.lastName)}</td><td>${esc(e.email)}</td><td>${esc(e.jobTitle ?? '—')}</td></tr>`).join('')
+        }</tbody></table>` : '<p class="muted">No managers yet.</p>'}
+        <div class="grid" style="margin-top:12px">
+          <div><label>First name</label><input id="m-first" /></div>
+          <div><label>Last name</label><input id="m-last" /></div>
+          <div><label>Work email</label><input id="m-email" type="email" /></div>
+          <div><label>Job title</label><input id="m-title" placeholder="Operations Manager" /></div>
+          <div><label>Start date</label><input id="m-start" type="date" value="${new Date().toISOString().slice(0, 10)}" /></div>
+          <div><label>Employee number</label><input id="m-num" value="${esc(nextNumber())}" /></div>
+        </div>
+        <div class="actions"><button class="btn secondary" id="m-add">Add manager</button></div>
+        <div id="m-msg"></div>
+      </div>
+      ${foot('managers', { canContinue: list.length > 0, label: list.length > 0 ? 'Continue' : 'Add a manager to continue' })}`
+
+    $('#m-add', body).addEventListener('click', async () => {
+      try {
+        const saved = await req('/v1/admin/employees', { method: 'POST', body: {
+          employeeNumber: $('#m-num', body).value.trim(),
+          firstName: $('#m-first', body).value.trim(),
+          lastName: $('#m-last', body).value.trim(),
+          email: $('#m-email', body).value.trim(),
+          jobTitle: $('#m-title', body).value.trim() || null,
+          startDate: $('#m-start', body).value,
+          employmentType: 'full_time',
+          status: 'active',
+          roles: ['employee', 'manager'],
+          managerId: me?.id ?? null,
+        }})
+        await refreshReference(); state.onboarding = await req('/v1/admin/onboarding'); paintMissing(); await managers()
+        if (saved.credentialsEmailed) showMailed([saved])
+      } catch (e) { $('#m-msg', body).innerHTML = notice('bad', formatError(e)) }
+    })
+    body.querySelector('[data-done="managers"]')?.addEventListener('click', () => markDone('managers'))
+  }
+
+  // ---- Step 5: departments --------------------------------------------------------
+  const departmentsStep = async () => {
+    const depts = state.departments
+    const heads = state.employees.filter(isManager)
+    const headName = (id) => { const h = heads.find((x) => x.id === id); return h ? `${h.firstName} ${h.lastName}` : '—' }
+    body.innerHTML = `
+      <div class="card">
+        <h3>Departments and their heads</h3>
+        <p class="hint">
+          Optional, but worth doing now: coverage rules, reports and the calendar group by department,
+          and a department head is who a request escalates to when its manager is away.
+        </p>
+        ${depts.length ? `<table><thead><tr><th>Department</th><th>Head</th><th></th></tr></thead><tbody>${
+          depts.map((d) => `<tr>
+            <td>${esc(d.name)}</td>
+            <td><select data-dept="${d.id}" class="dept-head">
+              <option value="">— none —</option>
+              ${heads.map((h) => `<option value="${h.id}" ${d.headEmployeeId === h.id ? 'selected' : ''}>${esc(h.firstName)} ${esc(h.lastName)}</option>`).join('')}
+            </select></td>
+            <td class="muted" style="font-size:12px">${d.headEmployeeId ? 'Head: ' + esc(headName(d.headEmployeeId)) : ''}</td>
+          </tr>`).join('')
+        }</tbody></table>
+        <div class="actions"><button class="btn secondary" id="d-save">Save heads</button></div>` : '<p class="muted">No departments yet.</p>'}
+        <div class="grid" style="margin-top:12px">
+          <div><label>New department</label><input id="d-name" placeholder="Operations" /></div>
+          <div><label>Head (optional)</label><select id="d-head"><option value="">— pick later —</option>${heads.map((h) => `<option value="${h.id}">${esc(h.firstName)} ${esc(h.lastName)}</option>`).join('')}</select></div>
+        </div>
+        <div class="actions"><button class="btn secondary" id="d-add">Add department</button></div>
+        <div id="d-msg"></div>
+      </div>
+      ${foot('departments', { label: depts.length ? 'Continue' : 'Continue without departments' })}`
+
+    $('#d-add', body).addEventListener('click', async () => {
+      try {
+        await req('/v1/admin/departments', { method: 'POST', body: {
+          name: $('#d-name', body).value.trim(),
+          headEmployeeId: $('#d-head', body).value || null,
+        }})
+        await refreshReference(); await departmentsStep()
+      } catch (e) { $('#d-msg', body).innerHTML = notice('bad', formatError(e)) }
+    })
+    $('#d-save', body)?.addEventListener('click', async () => {
+      try {
+        for (const sel of body.querySelectorAll('select.dept-head')) {
+          const d = state.departments.find((x) => x.id === sel.dataset.dept)
+          if ((d.headEmployeeId ?? null) === (sel.value || null)) continue
+          await req('/v1/admin/departments', { method: 'POST', body: { id: d.id, name: d.name, headEmployeeId: sel.value || null } })
+        }
+        await refreshReference(); await departmentsStep()
+      } catch (e) { $('#d-msg', body).innerHTML = notice('bad', formatError(e)) }
+    })
+    body.querySelector('[data-done="departments"]')?.addEventListener('click', () => markDone('departments'))
+  }
+
+  // ---- Step 6: organogram --------------------------------------------------------
+  const organogram = async () => {
+    const people = state.employees.filter((e) => e.id !== me?.id)
+    const heads = state.employees.filter(isManager)
+    const unassigned = people.filter((e) => !e.managerId).length
+    body.innerHTML = `
+      <div class="card">
+        <h3>Who reports to whom</h3>
+        <p class="hint">
+          Every person needs a manager — that is where their leave requests go and who sees their attendance.
+          Managers report to you or to another manager. You are the top of the tree.
+        </p>
+        ${people.length ? `<table><thead><tr><th>Person</th><th>Role</th><th>Department</th><th>Reports to</th></tr></thead><tbody>${
+          people.map((e) => `<tr>
+            <td>${esc(e.firstName)} ${esc(e.lastName)}<div class="muted" style="font-size:12px">${esc(e.jobTitle ?? e.employeeNumber)}</div></td>
+            <td>${isManager(e) ? '<span class="pill neutral">manager</span>' : ''}</td>
+            <td><select data-emp="${e.id}" class="org-dept">
+              <option value="">—</option>
+              ${state.departments.map((d) => `<option value="${d.id}" ${e.departmentId === d.id ? 'selected' : ''}>${esc(d.name)}</option>`).join('')}
+            </select></td>
+            <td><select data-emp="${e.id}" class="org-mgr">
+              <option value="">— nobody yet —</option>
+              ${heads.filter((h) => h.id !== e.id).map((h) => `<option value="${h.id}" ${e.managerId === h.id ? 'selected' : ''}>${esc(h.firstName)} ${esc(h.lastName)}${h.id === me?.id ? ' (you)' : ''}</option>`).join('')}
+            </select></td>
+          </tr>`).join('')
+        }</tbody></table>` : '<p class="muted">Add managers and team members first; they appear here.</p>'}
+        <div class="actions"><button class="btn secondary" id="org-save">Save reporting lines</button></div>
+        <div id="org-msg">${unassigned > 0 ? notice('warn', `${unassigned} ${unassigned === 1 ? 'person has' : 'people have'} no manager yet.`) : ''}</div>
+      </div>
+      ${foot('organogram', { canContinue: people.length > 0 && unassigned === 0, label: unassigned > 0 ? 'Assign everyone to continue' : 'Continue' })}`
+
+    $('#org-save', body).addEventListener('click', async () => {
+      const msg = $('#org-msg', body); msg.innerHTML = ''
+      try {
+        for (const sel of body.querySelectorAll('select.org-mgr')) {
+          const e = state.employees.find((x) => x.id === sel.dataset.emp)
+          const managerId = sel.value || null
+          const departmentId = body.querySelector(`select.org-dept[data-emp="${e.id}"]`)?.value || null
+          if ((e.managerId ?? null) === managerId && (e.departmentId ?? null) === departmentId) continue
+          await req('/v1/admin/employees', { method: 'POST', body: {
+            employeeNumber: e.employeeNumber, firstName: e.firstName, lastName: e.lastName, email: e.email,
+            jobTitle: e.jobTitle ?? null, startDate: e.startDate, departmentId,
+            locationId: e.locationId ?? null, managerId, workScheduleId: e.workScheduleId ?? null,
+            employmentType: e.employmentType, status: e.status, roles: e.roles?.length ? e.roles : ['employee'],
+          }})
+        }
+        await refreshReference(); state.onboarding = await req('/v1/admin/onboarding'); paintMissing(); await organogram()
+      } catch (e) { msg.innerHTML = notice('bad', formatError(e)) }
+    })
+    body.querySelector('[data-done="organogram"]')?.addEventListener('click', () => markDone('organogram'))
+  }
+
+  // ---- Step 6: the rest of the team -------------------------------------------
+  const team = async () => {
+    const n = state.employees.length - 1
+    const missing = state.onboarding?.missing ?? []
+    body.innerHTML = `
+      <div class="card">
+        <h3>The rest of the team</h3>
+        <p class="hint">
+          ${n > 0 ? `${n} ${n === 1 ? 'person is' : 'people are'} in.` : 'Nobody but you is in yet.'}
+          Bulk import takes a spreadsheet; the Employees page adds people one at a time. Set each
+          person's manager as you go — or come back to the Organogram step afterwards.
+          Everyone you add is emailed a welcome and their sign-in details; you never handle passwords.
+        </p>
+        <div class="actions">
+          <button class="btn secondary" id="s-import">Open bulk import</button>
+          <button class="btn ghost" id="s-one">Add one person</button>
+        </div>
+      </div>
+      ${missing.length ? `<div class="notice warn">Before the dashboard opens: ${missing.map((m) => esc(m.message)).join(' ')}</div>` : ''}
+      ${foot('team', { canContinue: missing.length === 0, label: missing.length === 0 ? 'Finish setup and open the dashboard' : 'Finish the steps above first' })}
+      <div id="t-msg"></div>`
+
+    $('#s-import', body).addEventListener('click', () => show('import'))
+    $('#s-one', body).addEventListener('click', () => show('employees'))
+    body.querySelector('[data-done="team"]')?.addEventListener('click', async () => {
+      try {
+        await req('/v1/admin/onboarding/steps/team', { method: 'POST' })
+        await req('/v1/admin/onboarding/complete', { method: 'POST' })
+        state.onboarding = await req('/v1/admin/onboarding')
+        paintNav()
+        await show('overview')
+      } catch (e) { $('#t-msg', body).innerHTML = notice('bad', formatError(e)) }
+    })
+  }
+
+  const paintMissing = () => {
+    const missing = state.onboarding?.missing ?? []
+    $('#wiz-missing', section).innerHTML = missing.length
+      ? `<div class="notice info" style="margin:0 0 16px">Still needed: ${missing.map((m) => esc(m.message)).join(' ')}</div>`
+      : `<div class="notice ok" style="margin:0 0 16px">Everything the dashboard needs is in place — finish on the Team step.</div>`
+  }
+
+  const paint = async () => {
+    paintRail()
+    paintMissing()
+    if (current === 'basics') await basics()
+    else if (current === 'leave') await leave()
+    else if (current === 'handbook') await handbook()
+    else if (current === 'managers') await managers()
+    else if (current === 'departments') await departmentsStep()
+    else if (current === 'organogram') await organogram()
+    else await team()
+  }
+
+  await paint()
+  return section
+}
 
 VIEWS.overview = async () => {
   await refreshReference()
   const pendingDevices = await req('/v1/admin/devices/pending')
   const active = state.employees.filter((e) => e.status === 'active').length
 
+  const ob = state.onboarding
   return el(`<section>
+    ${ob && !ob.completedAt ? `<div class="setup-banner">
+        <span>Setup is not finished — ${ob.steps.filter((x) => x.done).length} of ${ob.steps.length} steps done.</span>
+        <button class="btn" onclick="window.__show('setup')">Continue setup</button>
+      </div>` : ''}
     <h2>Overview</h2>
     <p class="lede">${esc(state.me.config.org.name)} · ${esc(state.me.config.org.timezone)}</p>
     <div class="grid">
@@ -965,6 +1775,7 @@ VIEWS.employees = async () => {
   const empName = (id) => { const e = state.employees.find((x) => x.id === id); return e ? `${e.firstName} ${e.lastName}` : '—' }
 
   const section = el(`<section>
+    ${setupLocked() ? '<p><a href="#" class="back-to-setup">‹ Back to setup</a></p>' : ''}
     <div class="page-head">
       <div>
         <h2>Employees</h2>
@@ -985,7 +1796,7 @@ VIEWS.employees = async () => {
           <td>${esc(empName(e.managerId))}</td>
           <td>${esc(e.startDate)}</td>
           <td><span class="pill ${e.status === 'active' ? 'ok' : 'neutral'}">${esc(e.status)}</span></td>
-          <td><button class="btn ghost edit-emp" data-id="${e.id}">Update</button></td>
+          <td style="white-space:nowrap"><button class="btn ghost edit-emp" data-id="${e.id}">Update</button> <button class="btn ghost reset-pw" data-id="${e.id}" title="Issue a new temporary password">Reset password</button></td>
         </tr>`).join('')}</tbody>
       </table></div>
     </div>
@@ -1012,6 +1823,7 @@ VIEWS.employees = async () => {
       <div><label>Schedule</label><select id="f-sched">${state.schedules.map((s) => `<option value="${s.id}" ${existing?.workScheduleId === s.id ? 'selected' : ''}>${esc(s.name)}</option>`).join('')}</select></div>
       <div><label>Employment type</label><select id="f-type">${['full_time','part_time','contract','intern'].map((t) => `<option value="${t}" ${existing?.employmentType === t ? 'selected' : ''}>${t.replace('_',' ')}</option>`).join('')}</select></div>
       <div><label>Status</label><select id="f-status">${['active','on_leave','suspended','terminated'].map((t) => `<option value="${t}" ${(existing?.status ?? 'active') === t ? 'selected' : ''}>${t.replace('_',' ')}</option>`).join('')}</select></div>
+      ${existing ? '' : `<div><label>Offer letter (optional)</label><input id="f-offer" type="file" accept=".pdf,image/*" /><p class="hint" style="margin:4px 0 0">For a hire who has not started. It goes with their welcome email and waits in the app to be acknowledged.</p></div>`}
       <div><label>Roles</label><select id="f-roles" multiple size="4">${['employee','manager','hr_admin','owner'].map((r) => `<option value="${r}" ${(existing?.roles ?? ['employee']).includes(r) ? 'selected' : ''}>${r}</option>`).join('')}</select></div>
     </div>
     <div id="emp-msg"></div>
@@ -1040,10 +1852,19 @@ VIEWS.employees = async () => {
           status: $('#f-status', body).value,
           roles: roles.length ? roles : ['employee'],
         }
+        const offer = $('#f-offer', body)?.files?.[0]
+        if (offer) {
+          if (offer.size > 15_000_000) { $('#emp-msg', body).innerHTML = notice('bad', 'The offer letter is over 15MB.'); return }
+          const buf = new Uint8Array(await offer.arrayBuffer())
+          let binary = ''
+          for (let i = 0; i < buf.length; i += 1) binary += String.fromCharCode(buf[i])
+          payload.offerLetter = { filename: offer.name, contentType: offer.type || 'application/octet-stream', contentBase64: btoa(binary) }
+        }
         try {
-          await req('/v1/admin/employees', { method: 'POST', body: payload })
+          const saved = await req('/v1/admin/employees', { method: 'POST', body: payload })
           close()
           await show('employees')
+          if (saved.credentialsEmailed) showMailed([saved])
         } catch (e) {
           $('#emp-msg', body).innerHTML = notice('bad', formatError(e))
         }
@@ -1052,6 +1873,18 @@ VIEWS.employees = async () => {
   }
 
   $('#add-emp', section).addEventListener('click', () => openEditor(null))
+  for (const b of section.querySelectorAll('.reset-pw')) {
+    b.addEventListener('click', async () => {
+      const emp = state.employees.find((e) => e.id === b.dataset.id)
+      if (!confirm(`Issue a new temporary password for ${emp.firstName} ${emp.lastName}? Their current password will stop working.`)) return
+      b.disabled = true
+      try {
+        await req(`/v1/admin/employees/${emp.id}/reset-password`, { method: 'POST' })
+        showMailed([emp])
+      } catch (e) { alert(formatError(e)) }
+      finally { b.disabled = false }
+    })
+  }
   for (const b of section.querySelectorAll('.edit-emp')) {
     b.addEventListener('click', () =>
       openEditor(state.employees.find((e) => e.id === b.dataset.id)))
@@ -1062,6 +1895,7 @@ VIEWS.employees = async () => {
 
 VIEWS.import = async () => {
   const section = el(`<section>
+    ${setupLocked() ? '<p><a href="#" onclick="window.__show(\'setup\');return false">‹ Back to setup</a></p>' : ''}
     <h2>Bulk import</h2>
     <p class="lede">Upload a spreadsheet or paste CSV. Nothing is written until you have reviewed the preview and pressed Import.</p>
     <div class="card">
@@ -1161,7 +1995,9 @@ QH-102,Grace,Hopper,grace@kanjufoods.test,2026-02-01,Engineer</textarea>
   $('#commit', section).addEventListener('click', async () => {
     if (!lastRows) return
     try {
-      render(await req('/v1/admin/employees/import', { method: 'POST', body: { mode: 'commit', rows: lastRows } }))
+      const result = await req('/v1/admin/employees/import', { method: 'POST', body: { mode: 'commit', rows: lastRows } })
+      render(result)
+      if (result.credentials?.length) showMailed(result.credentials)
     } catch (e) { $('#import-msg', section).innerHTML = notice('bad', formatError(e)) }
   })
 
@@ -1791,6 +2627,22 @@ VIEWS.settings = async () => {
   const s = org.settings
   const section = el(`<section>
     <h2>Settings</h2>
+    <div class="card">
+      <h3>Setup wizard</h3>
+      <p class="hint">Walk through company, leave, policies and staff again. Nothing is reset — it just reopens the guided steps.</p>
+      <div class="actions"><button class="btn secondary" onclick="fetch(location.origin+'/v1/admin/onboarding/reopen',{method:'POST',headers:{authorization:'Bearer '+sessionStorage.getItem('qh.access')}}).then(()=>window.__show('setup'))">Reopen setup</button></div>
+    </div>
+    <div class="card">
+      <h3>Your password</h3>
+      <p class="hint">At least 10 characters. Changing it does not sign out your phone.</p>
+      <div class="grid">
+        <div><label>Current password</label><input id="pw-current" type="password" autocomplete="current-password" /></div>
+        <div><label>New password</label><input id="pw-new" type="password" autocomplete="new-password" /></div>
+        <div><label>Type it again</label><input id="pw-again" type="password" autocomplete="new-password" /></div>
+      </div>
+      <div class="actions"><button class="btn secondary" id="pw-save">Change password</button></div>
+      <div id="pw-msg"></div>
+    </div>
     <p class="lede">Org-wide rules. The rounding rule especially — every org has an opinion and they all differ.</p>
     <div class="card">
       <div class="grid">
@@ -1813,6 +2665,20 @@ VIEWS.settings = async () => {
       <div id="settings-msg"></div>
     </div>
   </section>`)
+
+  $('#pw-save', section).addEventListener('click', async () => {
+    const msg = $('#pw-msg', section)
+    msg.innerHTML = ''
+    try {
+      await changePassword({
+        currentPassword: $('#pw-current', section).value,
+        newPassword: $('#pw-new', section).value,
+        again: $('#pw-again', section).value,
+      })
+      for (const id of ['#pw-current', '#pw-new', '#pw-again']) $(id, section).value = ''
+      msg.innerHTML = notice('ok', 'Password changed.')
+    } catch (e) { msg.innerHTML = notice('bad', formatError(e)) }
+  })
 
   $('#save-settings', section).addEventListener('click', async () => {
     const body = {

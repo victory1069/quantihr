@@ -21,12 +21,15 @@ import {
 } from '../../../src/ui/components'
 import { DataRow, Label } from '../../../src/ui/primitives'
 import { colour, font, radius, space } from '../../../src/ui/theme'
-import { useMeeting, useRaiseDispute } from '../../../src/api/queries'
+import { useMeeting, useRaiseDispute, useRsvp } from '../../../src/api/queries'
+import { useSession } from '../../../src/store/session'
 
 export default function MeetingDetail() {
   const { id } = useLocalSearchParams<{ id: string }>()
   const router = useRouter()
   const meeting = useMeeting(id)
+  const rsvp = useRsvp(id ?? '')
+  const myEmployeeId = useSession((s) => s.me?.employee.id)
   const dispute = useRaiseDispute(id ?? '')
   const [reason, setReason] = useState('')
   const [querying, setQuerying] = useState(false)
@@ -62,6 +65,49 @@ export default function MeetingDetail() {
           {data.routeToHr ? <Badge label="Shared with HR" tone="warning" /> : null}
         </View>
       </Appear>
+
+      {/* The invitation, for someone who has not answered yet. */}
+      {(() => {
+        const mine = data.participants.find((p) => p.employeeId === myEmployeeId)
+        if (!mine || data.status !== 'scheduled' || data.isHost) return null
+        if (mine.inviteStatus !== 'needs_action' && mine.inviteStatus !== 'tentative') {
+          return (
+            <Appear index={1}>
+              <Text style={styles.faint}>
+                You {mine.inviteStatus === 'accepted' ? 'accepted' : 'declined'} this invitation.
+              </Text>
+            </Appear>
+          )
+        }
+        return (
+          <Appear index={1}>
+            <Card tone="primary">
+              <Label tone="primary">
+                {mine.isOptional ? 'You are invited · optional' : 'You are expected'}
+              </Label>
+              <Text style={styles.body}>
+                {mine.isOptional
+                  ? 'Come if it is useful to you; nothing is recorded if you do not.'
+                  : 'Your attendance will be recorded. If you cannot make it, the host is told now rather than on the day.'}
+              </Text>
+              <View style={styles.rsvpRow}>
+                <Button
+                  label="Accept"
+                  loading={rsvp.isPending && rsvp.variables === 'accepted'}
+                  onPress={() => rsvp.mutate('accepted')}
+                  style={styles.rsvpGrow}
+                />
+                <Button
+                  label="Decline"
+                  variant="secondary"
+                  loading={rsvp.isPending && rsvp.variables === 'declined'}
+                  onPress={() => rsvp.mutate('declined')}
+                />
+              </View>
+            </Card>
+          </Appear>
+        )
+      })()}
 
       {data.isHost && data.status === 'awaiting_review' ? (
         <Appear index={1}>
@@ -169,12 +215,25 @@ export default function MeetingDetail() {
 
       <Appear index={5}>
         <Card>
-          <SectionTitle>Attendance</SectionTitle>
+          <SectionTitle>{data.status === 'scheduled' ? 'Invited' : 'Attendance'}</SectionTitle>
           {data.participants.map((person) => (
             <DataRow
               key={person.employeeId}
-              label={person.employeeName}
-              value={describeAttendance(person.attendanceStatus, person.minutesLate)}
+              label={`${person.employeeName}${person.isOptional ? ' · optional' : ''}`}
+              value={
+                data.status === 'scheduled'
+                  ? describeInvite(person.inviteStatus)
+                  : describeAttendance(person.attendanceStatus, person.minutesLate)
+              }
+              tone={
+                data.status === 'scheduled'
+                  ? person.inviteStatus === 'accepted'
+                    ? 'success'
+                    : person.inviteStatus === 'declined'
+                      ? 'danger'
+                      : 'muted'
+                  : 'default'
+              }
             />
           ))}
         </Card>
@@ -249,7 +308,22 @@ function formatWhen(iso: string): string {
   })
 }
 
+function describeInvite(status: string): string {
+  switch (status) {
+    case 'accepted':
+      return 'Accepted'
+    case 'declined':
+      return 'Declined'
+    case 'tentative':
+      return 'Maybe'
+    default:
+      return 'No answer yet'
+  }
+}
+
 const styles = StyleSheet.create({
+  rsvpRow: { flexDirection: 'row', gap: space.sm },
+  rsvpGrow: { flex: 1 },
   head: { gap: space.sm, paddingTop: space.sm },
   title: {
     fontSize: font.size.xl,
@@ -263,14 +337,14 @@ const styles = StyleSheet.create({
   body: {
     fontSize: font.size.md,
     color: colour.text,
-    lineHeight: 23,
+    lineHeight: 21,
     fontFamily: font.family,
   },
   block: { gap: space.xs },
   bullet: {
     fontSize: font.size.sm,
     color: colour.text,
-    lineHeight: 22,
+    lineHeight: 20,
     fontFamily: font.family,
   },
   faint: { fontSize: font.size.sm, color: colour.textMuted, fontFamily: font.family },
@@ -279,7 +353,7 @@ const styles = StyleSheet.create({
   actionText: {
     fontSize: font.size.md,
     color: colour.text,
-    lineHeight: 22,
+    lineHeight: 20,
     fontFamily: font.family,
   },
 

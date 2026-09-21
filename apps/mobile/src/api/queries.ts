@@ -24,6 +24,8 @@ import type {
   TeamAttendanceResponse,
   TeamCalendarResponse,
   ApprovalItem,
+  TrainingItemInput,
+  TrainingPlanView,
 } from '@quanti/shared'
 import { api } from './client'
 import { enqueue } from '../lib/outbox'
@@ -49,6 +51,8 @@ export const keys = {
   tasks: (status: string) => ['tasks', status] as const,
   meetingAttendance: (source: string) => ['attendance', 'meetings', source] as const,
   meetingCodes: ['meetings', 'codes'] as const,
+  training: ['training', 'mine'] as const,
+  teamTraining: ['training', 'team'] as const,
 }
 
 /** Long stale time: these change rarely and must render instantly from cache. */
@@ -475,6 +479,21 @@ export function useMeetings(window: 'upcoming' | 'past' = 'past') {
   })
 }
 
+/** An invitee's answer. The meeting refetches so the list shows it at once. */
+export function useRsvp(id: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (response: 'accepted' | 'declined' | 'tentative') =>
+      api.post(`/v1/meetings/${id}/rsvp`, { response }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.meeting(id) })
+      void queryClient.invalidateQueries({ queryKey: keys.meetings('upcoming') })
+      // The invitation in the inbox now says "you accepted"; fetch that.
+      void queryClient.invalidateQueries({ queryKey: keys.notifications })
+    },
+  })
+}
+
 export function useMeeting(id: string | undefined) {
   return useQuery({
     queryKey: keys.meeting(id ?? ''),
@@ -694,7 +713,7 @@ export function useCreateMeeting() {
       title: string
       scheduledStart: string
       scheduledEnd: string
-      inviteeIds: string[]
+      invitees: { employeeId: string; optional: boolean }[]
       physical: boolean
       venue?: string
     }) => {
@@ -702,7 +721,8 @@ export function useCreateMeeting() {
         title: input.title,
         scheduledStart: input.scheduledStart,
         scheduledEnd: input.scheduledEnd,
-        inviteeIds: input.inviteeIds,
+        source: input.physical ? 'in_person' : 'google_meet',
+        invitees: input.invitees,
       })
 
       if (!input.physical) return { id: created.id, code: null as string | null }
@@ -715,6 +735,149 @@ export function useCreateMeeting() {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: keys.meetings('upcoming') })
       void queryClient.invalidateQueries({ queryKey: keys.meetingCodes })
+    },
+  })
+}
+
+export interface AskResult {
+  answered: boolean
+  answer: string
+  citations: { document: string; excerpt: string }[]
+  documentsConsulted: number
+  model: string | null
+  answeredAt: string
+}
+
+/**
+ * The policy assistant. A mutation rather than a query because every question
+ * is a fresh, paid model call — nothing about it should be cached or refetched
+ * on focus.
+ */
+export function useAskPolicy() {
+  return useMutation({
+    mutationFn: (question: string) => api.post<AskResult>('/v1/ask', { question }),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Notifications — the in-app inbox
+// ---------------------------------------------------------------------------
+
+export interface NotificationItem {
+  id: string
+  event: string
+  title: string
+  body: string
+  deepLink: string | null
+  data: Record<string, unknown> & { actions?: string[] }
+  readAt: string | null
+  createdAt: string
+}
+
+/**
+ * Polled while the app is open. Push is the fast path on a phone, but the
+ * inbox has to be right without it — on the web, with permission refused,
+ * or before the token registered — so this refetches every half minute.
+ */
+export function useNotifications(enabled = true) {
+  return useQuery({
+    queryKey: keys.notifications,
+    queryFn: ({ signal }) =>
+      api.get<{ notifications: NotificationItem[]; unread: number }>('/v1/notifications', signal),
+    enabled,
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  })
+}
+
+export function useMarkNotificationsRead() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (ids?: string[]) => api.post('/v1/notifications/read', ids ? { ids } : {}),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.notifications }),
+  })
+}
+
+// ---------------------------------------------------------------------------
+// Learning & development
+// ---------------------------------------------------------------------------
+
+export function useTrainingPlans() {
+  return useQuery({
+    queryKey: keys.training,
+    queryFn: ({ signal }) => api.get<{ plans: TrainingPlanView[] }>('/v1/training/plans', signal),
+    ...LIVE,
+  })
+}
+
+export function useTeamTraining(enabled: boolean) {
+  return useQuery({
+    queryKey: keys.teamTraining,
+    queryFn: ({ signal }) => api.get<{ plans: TrainingPlanView[] }>('/v1/team/training', signal),
+    enabled,
+    ...LIVE,
+  })
+}
+
+export function useSaveTrainingPlan() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: {
+      periodType: 'month' | 'quarter'
+      periodStart: string
+      items: TrainingItemInput[]
+      submit: boolean
+    }) =>
+      (async () => {
+        const saved = await api.post<TrainingPlanView>('/v1/training/plans', {
+          periodType: input.periodType,
+          periodStart: input.periodStart,
+          items: input.items,
+        })
+        if (!input.submit) return saved
+        return api.post<TrainingPlanView>(`/v1/training/plans/${saved.id}/submit`)
+      })(),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.training }),
+  })
+}
+
+export function useSubmitTrainingPlan() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (id: string) => api.post<TrainingPlanView>(`/v1/training/plans/${id}/submit`),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.training }),
+  })
+}
+
+export function useDecideTrainingPlan() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string
+      decision: 'approve' | 'decline' | 'request_changes'
+      note?: string
+    }) => api.post<TrainingPlanView>(`/v1/team/training/${id}`, body),
+    onSuccess: () => void queryClient.invalidateQueries({ queryKey: keys.teamTraining }),
+  })
+}
+
+export function useCompleteTraining() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({
+      id,
+      ...body
+    }: {
+      id: string
+      note?: string
+      proof?: { filename: string; contentType: string; contentBase64: string }
+    }) => api.post(`/v1/training/items/${id}/complete`, body),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: keys.training })
+      void queryClient.invalidateQueries({ queryKey: keys.documents })
     },
   })
 }

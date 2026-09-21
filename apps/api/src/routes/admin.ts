@@ -35,6 +35,9 @@ import {
 import type { Database, Tx } from '../db/client.js'
 import { audit, redact } from '../lib/audit.js'
 import { requireRole, tenant } from '../lib/context.js'
+import { memberCredentialsEmail, memberWelcomeEmail, passwordResetEmail, sendEmail } from '../lib/email.js'
+import { env } from '../lib/env.js'
+import { generateTemporaryPassword, hashPassword } from '../lib/password.js'
 import { storage } from '../lib/storage.js'
 import { orgClock } from '../lib/time.js'
 import { ensureBalance, toLeaveTypeView } from './leave.js'
@@ -176,7 +179,11 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database): void {
       if (body.id) {
         const [updated] = await tx
           .update(departments)
-          .set({ name: body.name, parentDepartmentId: body.parentDepartmentId ?? null })
+          .set({
+            name: body.name,
+            parentDepartmentId: body.parentDepartmentId ?? null,
+            ...(body.headEmployeeId !== undefined ? { headEmployeeId: body.headEmployeeId } : {}),
+          })
           .where(eq(departments.id, body.id))
           .returning()
         if (!updated) throw new ApiError(ERROR_CODES.NOT_FOUND, 'Department not found', 404)
@@ -188,6 +195,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database): void {
           orgId: auth.orgId,
           name: body.name,
           parentDepartmentId: body.parentDepartmentId ?? null,
+          headEmployeeId: body.headEmployeeId ?? null,
         })
         .returning()
       return created!
@@ -358,8 +366,24 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database): void {
     const auth = requireRole(request, 'hr_admin', 'owner')
     const body = schemas.admin.upsertEmployee.parse(request.body)
 
-    const row = await tenant(request, async (tx) => upsertEmployee(tx, auth.orgId, body, auth.userId))
-    return reply.status(body.id ? 200 : 201).send(row)
+    const { row, orgName } = await tenant(request, async (tx) => ({
+      row: await upsertEmployee(tx, auth.orgId, body, auth.userId),
+      orgName: await orgNameOf(tx, auth.orgId),
+    }))
+
+    // The credentials go to the person, never back to HR: a password HR has
+    // seen is a password HR could use. HR learns only that the mail went.
+    const { temporaryPassword, ...safe } = row
+    if (temporaryPassword) {
+      sendMemberMails(request, {
+        firstName: row.firstName,
+        email: row.email,
+        orgName,
+        temporaryPassword,
+        offerLetter: !!body.offerLetter,
+      })
+    }
+    return reply.status(body.id ? 200 : 201).send({ ...safe, credentialsEmailed: !!temporaryPassword })
   })
 
   /**
@@ -379,6 +403,62 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database): void {
    * This only reads. Nothing is written, and the caller still has to run the
    * result through validate and commit like any pasted CSV.
    */
+  /**
+   * A fresh temporary password for one employee.
+   *
+   * For the person who lost their Post-it, and the only way a temporary
+   * password can be seen after creation — they are hashed at rest and never
+   * read back. The new one forces a change on next sign-in like the first did.
+   */
+  app.post('/v1/admin/employees/:id/reset-password', async (request, reply) => {
+    const auth = requireRole(request, 'hr_admin', 'owner')
+    const { id } = request.params as { id: string }
+
+    const temporaryPassword = generateTemporaryPassword()
+
+    const target = await tenant(request, async (tx) => {
+      const [employee] = await tx
+        .select({
+          id: employees.id,
+          userId: employees.userId,
+          email: employees.email,
+          firstName: employees.firstName,
+        })
+        .from(employees)
+        .where(eq(employees.id, id))
+        .limit(1)
+      if (!employee?.userId) {
+        throw new ApiError(ERROR_CODES.NOT_FOUND, 'No such employee', 404)
+      }
+
+      await tx
+        .update(users)
+        .set({
+          passwordHash: await hashPassword(temporaryPassword),
+          mustChangePassword: true,
+          passwordChangedAt: new Date(),
+        })
+        .where(eq(users.id, employee.userId))
+
+      await audit(tx, {
+        orgId: auth.orgId,
+        actorUserId: auth.userId,
+        action: 'auth.password_reset',
+        entityType: 'user',
+        entityId: employee.userId,
+        ip: request.ip,
+      })
+
+      return employee
+    })
+
+    void sendEmail({ ...passwordResetEmail(target.firstName, temporaryPassword), to: target.email })
+      .then(() => request.log.info({ employeeId: target.id }, 'password reset mail sent'))
+      .catch((err: unknown) => request.log.error({ err, employeeId: target.id }, 'password reset mail failed'))
+
+    return reply.send({ employeeId: target.id, email: target.email, credentialsEmailed: true })
+  })
+
   app.post('/v1/admin/employees/import/parse', async (request, reply) => {
     requireRole(request, 'hr_admin', 'owner')
     const body = z
@@ -481,10 +561,16 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database): void {
       const rows = body.rows.map((raw, i) => validateImportRow(raw, i + 2, byNumber))
       const errorCount = rows.filter((r) => r.result.action === 'error').length
 
+      // Every account the import created gets its credentials by email, and
+      // HR gets the list of who was mailed. The passwords themselves never
+      // come back through the console.
+      const credentials: { employeeNumber: string; email: string; temporaryPassword: string }[] = []
+      const orgName = body.mode === 'commit' ? await orgNameOf(tx, auth.orgId) : ''
+
       if (body.mode === 'commit' && errorCount === 0) {
         for (const row of rows) {
           if (!row.parsed) continue
-          await upsertEmployee(
+          const saved = await upsertEmployee(
             tx,
             auth.orgId,
             {
@@ -493,6 +579,20 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database): void {
             },
             auth.userId,
           )
+          if (saved.temporaryPassword) {
+            credentials.push({
+              employeeNumber: saved.employeeNumber,
+              email: saved.email,
+              temporaryPassword: saved.temporaryPassword,
+            })
+            sendMemberMails(request, {
+              firstName: saved.firstName,
+              email: saved.email,
+              orgName,
+              temporaryPassword: saved.temporaryPassword,
+              offerLetter: false,
+            })
+          }
         }
         await audit(tx, {
           orgId: auth.orgId,
@@ -513,6 +613,7 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database): void {
         errorCount,
         rows: rows.map((r) => r.result),
         committed: body.mode === 'commit' && errorCount === 0,
+        credentials: credentials.map((c) => ({ employeeNumber: c.employeeNumber, email: c.email })),
       }
     })
 
@@ -804,19 +905,49 @@ async function upsertEmployee(
   actorUserId: string,
 ) {
   // Every employee needs a user row to sign in with; email is the link.
-  const [existingUser] = await tx
-    .select()
+  //
+  // An existing employee keeps their user row even when the email changes —
+  // the address on the user row is updated to follow. Looking the user up by
+  // the new address instead used to mint a second account with a fresh
+  // temporary password and leave the old login orphaned.
+  const [existingEmployee] = await tx
+    .select({ userId: employees.userId })
+    .from(employees)
+    .where(and(eq(employees.orgId, orgId), eq(employees.employeeNumber, body.employeeNumber)))
+    .limit(1)
+
+  const [userAtAddress] = await tx
+    .select({ id: users.id })
     .from(users)
     .where(eq(users.email, body.email))
     .limit(1)
 
-  let userId = existingUser?.id
+  let userId = existingEmployee?.userId ?? userAtAddress?.id
+  // Only a brand-new account gets a temporary password. Updating an existing
+  // employee must never rotate their credential underneath them.
+  let temporaryPassword: string | null = null
+  if (existingEmployee?.userId) {
+    if (userAtAddress && userAtAddress.id !== existingEmployee.userId) {
+      throw new ApiError(
+        ERROR_CODES.VALIDATION_FAILED,
+        'That email already belongs to another account',
+        409,
+      )
+    }
+    await tx
+      .update(users)
+      .set({ email: body.email })
+      .where(eq(users.id, existingEmployee.userId))
+  }
   if (!userId) {
+    temporaryPassword = generateTemporaryPassword()
     const [created] = await tx
       .insert(users)
       .values({
         orgId,
         email: body.email,
+        passwordHash: await hashPassword(temporaryPassword),
+        mustChangePassword: true,
         notificationPreferences: {
           leaveDecisions: true,
           checkinReminders: true,
@@ -859,16 +990,63 @@ async function upsertEmployee(
     })
     .returning()
 
+  // An offer letter arrives with the hire, is filed on their record, and
+  // waits in the app to be acknowledged — the last step of their onboarding.
+  if (body.offerLetter && !existingEmployee) {
+    const buffer = Buffer.from(body.offerLetter.contentBase64, 'base64')
+    if (buffer.length > 20_000_000) {
+      throw new ApiError(ERROR_CODES.VALIDATION_FAILED, 'Offer letter is larger than 20MB', 413)
+    }
+    const key = storage().key(orgId, body.offerLetter.filename)
+    await storage().put(key, buffer, body.offerLetter.contentType)
+    await tx.insert(documents).values({
+      orgId,
+      employeeId: row!.id,
+      type: 'letter',
+      name: `Offer letter — ${body.offerLetter.filename}`,
+      s3Key: key,
+      contentType: body.offerLetter.contentType,
+      sizeBytes: buffer.length,
+      uploadedBy: actorUserId,
+      requiresAcknowledgement: true,
+    })
+  }
+
   await audit(tx, {
     orgId,
     actorUserId,
     action: body.id ? 'employee.updated' : 'employee.created',
     entityType: 'employee',
     entityId: row!.id,
-    after: redact({ ...values, phone: values.phone }),
+    after: redact({ ...values, phone: values.phone, offerLetter: !!body.offerLetter }),
   })
 
-  return row!
+  return { ...row!, temporaryPassword }
+}
+
+async function orgNameOf(tx: Tx, orgId: string): Promise<string> {
+  const [org] = await tx
+    .select({ name: organisations.name })
+    .from(organisations)
+    .where(eq(organisations.id, orgId))
+    .limit(1)
+  return org?.name ?? 'Your employer'
+}
+
+/** Fire-and-forget after the transaction; outcomes go to the log. */
+function sendMemberMails(
+  request: { log: { info: (o: object, m: string) => void; error: (o: object, m: string) => void } },
+  input: { firstName: string; email: string; orgName: string; temporaryPassword: string; offerLetter: boolean },
+): void {
+  const mails = [
+    memberWelcomeEmail(input.firstName, input.orgName),
+    memberCredentialsEmail({ ...input, appUrl: env().APP_URL }),
+  ]
+  for (const mail of mails) {
+    void sendEmail({ ...mail, to: input.email })
+      .then((sent) => request.log.info({ to: input.email, messageId: sent.messageId }, 'member mail sent'))
+      .catch((err: unknown) => request.log.error({ err, to: input.email }, 'member mail failed'))
+  }
 }
 
 interface ImportRowOutcome {

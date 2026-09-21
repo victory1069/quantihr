@@ -314,13 +314,13 @@ const styles = StyleSheet.create({
   body: {
     fontSize: font.size.md,
     color: colour.text,
-    lineHeight: 22,
+    lineHeight: 20,
     fontFamily: font.family,
   },
   faint: {
     fontSize: font.size.sm,
     color: colour.textMuted,
-    lineHeight: 21,
+    lineHeight: 19,
     fontFamily: font.family,
   },
   attendee: { fontSize: font.size.md, color: colour.text, fontFamily: font.family },

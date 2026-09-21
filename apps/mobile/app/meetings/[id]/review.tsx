@@ -1,21 +1,14 @@
 /**
- * Host review — the core screen (meeting-assistant spec §9).
+ * Host review — the fifteen-second confirm (spec §9, §5.3).
  *
- * Target: fifteen seconds for a typical meeting. Everything here is shaped by
- * that number.
+ * Nothing leaves this screen until the host says so: the decisions are
+ * shown, each proposed task is shown with the words it came from, and a task
+ * with no named owner is stopped at the door — assign it or discard it, but
+ * it does not go out as "someone should". The default is to confirm what was
+ * heard, because the host is checking a summary, not writing one.
  *
- *   - The whole set is confirmed in one call, not one per action. A round trip
- *     per row does not fit inside fifteen seconds.
- *   - `owner_confidence` drives the default state, so the common case is
- *     reading and pressing one button: explicit owners are pre-filled, implied
- *     owners are pre-filled with a visible flag, unclear owners are left empty.
- *   - The verbatim quote is always on screen. A host who disagrees with an
- *     assignment can see immediately whether the model misread the room or
- *     whether they misremember what they said — and a hallucinated action is
- *     obvious at a glance rather than after it has been dispatched.
- *
- * Nothing has been sent to anyone when this screen opens. That is the point of
- * it existing.
+ * `Edit` opens the full card for each task (reword, re-own, drop). Most
+ * reviews never need it.
  */
 
 import { useMemo, useState } from 'react'
@@ -23,11 +16,13 @@ import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import {
   Appear,
+  BackLink,
   Badge,
   Button,
   Card,
   EmptyState,
   ErrorNotice,
+  HeroSheet,
   Screen,
   Skeleton,
 } from '../../../src/ui/components'
@@ -47,6 +42,8 @@ export default function Review() {
   const router = useRouter()
   const meeting = useMeeting(id)
   const submit = useSubmitReview(id ?? '')
+  const [editing, setEditing] = useState(false)
+  const [assigning, setAssigning] = useState<string | null>(null)
 
   const drafts = useMemo(() => {
     const actions = meeting.data?.actions.filter((a) => a.status === 'draft') ?? []
@@ -92,7 +89,6 @@ export default function Review() {
   }
 
   const pending = data.actions.filter((a) => a.status === 'draft')
-  const keeping = pending.filter((a) => state[a.id]?.keep).length
 
   if (pending.length === 0) {
     return (
@@ -110,82 +106,257 @@ export default function Review() {
     )
   }
 
-  return (
-    <Screen>
-      <Appear index={0}>
-        <View style={styles.head}>
-          <Text style={styles.title}>{data.title}</Text>
-          <Text style={styles.meta}>
-            {pending.length} {pending.length === 1 ? 'action' : 'actions'} · nothing has been
-            sent yet
-          </Text>
-        </View>
-      </Appear>
+  // What will go out: kept tasks that have an owner. An unowned task is never
+  // sent — it is assigned here or dropped.
+  const sending = pending.filter((a) => state[a.id]?.keep && state[a.id]?.ownerEmployeeId)
+  const unowned = pending.filter((a) => state[a.id]?.keep && !state[a.id]?.ownerEmployeeId)
 
-      {data.unresolvedSpeakers.length > 0 ? (
-        <Appear index={1}>
-          <Card style={styles.nudge}>
-            <Text style={styles.body}>
-              {data.unresolvedSpeakers.length}{' '}
-              {data.unresolvedSpeakers.length === 1 ? 'voice was' : 'voices were'} not
-              identified, so some of these have no owner.
+  const minutes =
+    data.actualStart && data.actualEnd
+      ? Math.max(1, Math.round((Date.parse(data.actualEnd) - Date.parse(data.actualStart)) / 60_000))
+      : Math.max(
+          1,
+          Math.round((Date.parse(data.scheduledEnd) - Date.parse(data.scheduledStart)) / 60_000),
+        )
+  const required = data.participants.filter((p) => p.expected && !p.isOptional)
+  const attended = required.filter(
+    (p) => p.attendanceStatus === 'present' || p.attendanceStatus === 'late',
+  )
+  const host = data.participants.find((p) => p.employeeId === data.hostEmployeeId)
+  const hostLine = data.isHost
+    ? 'YOU HOSTED'
+    : host
+      ? `HOSTED BY ${host.employeeName.split(' ')[0]!.toUpperCase()}`
+      : 'DRAFT'
+
+  const send = () =>
+    submit.mutate(
+      {
+        decisions: pending.map((action) => {
+          const draft = state[action.id]!
+          return draft.keep && draft.ownerEmployeeId
+            ? {
+                actionId: action.id,
+                decision: 'confirm' as const,
+                description: draft.description,
+                ownerEmployeeId: draft.ownerEmployeeId,
+                dueDate: draft.dueDate,
+              }
+            : { actionId: action.id, decision: 'dismiss' as const }
+        }),
+      },
+      { onSuccess: () => router.replace(`/meetings/${id}`) },
+    )
+
+  return (
+    <HeroSheet
+      hero={
+        <View>
+          <BackLink label="Meeting" onPress={() => router.back()} />
+          <Text style={styles.heroTitle}>{data.title}</Text>
+        </View>
+      }
+      dimmed
+      tone="manager"
+      maxSheet={0.92}
+    >
+      <View style={styles.eyebrowRow}>
+        <View style={styles.aiBadge}>
+          <Text style={styles.aiGlyph}>✦</Text>
+        </View>
+        <Text style={styles.eyebrow}>MEETING SUMMARY · {hostLine}</Text>
+      </View>
+
+      <View style={{ gap: space.xs }}>
+        <Text style={styles.title}>
+          {data.title} · {minutes} min
+        </Text>
+        <Text style={styles.meta}>
+          {required.length > 0 ? `${attended.length} of ${required.length} required · ` : ''}
+          {data.routeToHr ? 'summary shared with HR' : 'summary to you only'}
+        </Text>
+      </View>
+
+      {data.summary && data.summary.decisions.length > 0 ? (
+        <Card style={styles.decisions}>
+          <Text style={styles.sectionLabel}>DECISIONS</Text>
+          {data.summary.decisions.map((d, i) => (
+            <Text key={i} style={styles.decision}>
+              {d.decision}
             </Text>
-            <Button
-              label="Tag the speakers"
-              variant="secondary"
-              onPress={() => router.push(`/meetings/${id}/speakers`)}
-            />
-          </Card>
-        </Appear>
+          ))}
+        </Card>
       ) : null}
 
-      {pending.map((action, index) => (
-        <Appear key={action.id} index={2 + index}>
-          <ActionCard
-            action={action}
-            draft={state[action.id]!}
-            attendees={data.participants}
-            onChange={(patch) => update(action.id, patch)}
-          />
-        </Appear>
-      ))}
-
-      <Appear index={2 + pending.length}>
-        <View style={styles.footer}>
+      {data.unresolvedSpeakers.length > 0 ? (
+        <Card tone="warning">
+          <Text style={styles.body}>
+            {data.unresolvedSpeakers.length}{' '}
+            {data.unresolvedSpeakers.length === 1 ? 'voice was' : 'voices were'} not identified,
+            so some of these have no owner.
+          </Text>
           <Button
-            label={
-              keeping === pending.length
-                ? `Confirm all ${pending.length}`
-                : `Confirm ${keeping}, drop ${pending.length - keeping}`
-            }
-            loading={submit.isPending}
-            onPress={() =>
-              submit.mutate(
-                {
-                  decisions: pending.map((action) => {
-                    const draft = state[action.id]!
-                    return draft.keep
-                      ? {
-                          actionId: action.id,
-                          decision: 'confirm' as const,
-                          description: draft.description,
-                          ownerEmployeeId: draft.ownerEmployeeId,
-                          dueDate: draft.dueDate,
-                        }
-                      : { actionId: action.id, decision: 'dismiss' as const }
-                  }),
-                },
-                { onSuccess: () => router.replace(`/meetings/${id}`) },
+            label="Tag the speakers"
+            variant="secondary"
+            onPress={() => router.push(`/meetings/${id}/speakers`)}
+          />
+        </Card>
+      ) : null}
+
+      <Text style={styles.sectionLabel}>PROPOSED TASKS · CONFIRM BEFORE SENDING</Text>
+
+      {editing
+        ? pending.map((action, index) => (
+            <Appear key={action.id} index={index}>
+              <ActionCard
+                action={action}
+                draft={state[action.id]!}
+                attendees={data.participants}
+                onChange={(patch) => update(action.id, patch)}
+              />
+            </Appear>
+          ))
+        : pending.map((action, index) => {
+            const draft = state[action.id]!
+            const owner = data.participants.find((p) => p.employeeId === draft.ownerEmployeeId)
+            const stamp = formatStamp(action.timestampMs)
+
+            if (!draft.keep) {
+              return (
+                <Appear key={action.id} index={index}>
+                  <Pressable
+                    onPress={() => update(action.id, { keep: true })}
+                    style={styles.droppedRow}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.droppedText}>Discarded · “{action.sourceQuote}”</Text>
+                    <Text style={styles.undo}>Undo</Text>
+                  </Pressable>
+                </Appear>
               )
             }
-          />
-          {submit.isError ? (
-            <ErrorNotice message="That could not be saved. Nothing was sent." />
-          ) : null}
-        </View>
-      </Appear>
-    </Screen>
+
+            if (!owner) {
+              const open = assigning === action.id
+              return (
+                <Appear key={action.id} index={index}>
+                  <Card tone="warning">
+                    <View style={styles.taskRow}>
+                      <View style={[styles.who, styles.whoUnknown]}>
+                        <Text style={styles.whoUnknownGlyph}>?</Text>
+                      </View>
+                      <Text style={styles.taskTitle}>Unassigned · “{draft.description}”</Text>
+                    </View>
+                    <Text style={styles.warnLine}>No owner was named. Pick one or discard.</Text>
+                    {open ? (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                        <View style={styles.owners}>
+                          {data.participants.map((person) => (
+                            <Pressable
+                              key={person.employeeId}
+                              accessibilityRole="button"
+                              onPress={() => {
+                                update(action.id, { ownerEmployeeId: person.employeeId })
+                                setAssigning(null)
+                              }}
+                              style={styles.owner}
+                            >
+                              <Text style={styles.ownerLabel}>{person.employeeName}</Text>
+                            </Pressable>
+                          ))}
+                        </View>
+                      </ScrollView>
+                    ) : null}
+                    <View style={styles.actions}>
+                      <Button
+                        label={open ? 'Cancel' : 'Assign'}
+                        variant="secondary"
+                        style={styles.warnButton}
+                        onPress={() => setAssigning(open ? null : action.id)}
+                      />
+                      <Button
+                        label="Discard"
+                        variant="ghost"
+                        onPress={() => update(action.id, { keep: false })}
+                      />
+                    </View>
+                  </Card>
+                </Appear>
+              )
+            }
+
+            return (
+              <Appear key={action.id} index={index}>
+                <Card>
+                  <View style={styles.taskRow}>
+                    <View style={styles.who}>
+                      <Text style={styles.whoInitials}>{initials(owner.employeeName)}</Text>
+                    </View>
+                    <Text style={styles.taskTitle}>
+                      {owner.employeeName.split(' ')[0]} · {draft.description}
+                    </Text>
+                    <Text style={styles.tick}>✓</Text>
+                  </View>
+                  <Text style={styles.taskSub}>
+                    {draft.dueDate ? `Due ${shortDate(draft.dueDate)} · ` : ''}“{action.sourceQuote}
+                    ” ({stamp})
+                  </Text>
+                  {action.ownerConfidence === 'implied' ? (
+                    <Badge label="Owner inferred" tone="warning" />
+                  ) : null}
+                </Card>
+              </Appear>
+            )
+          })}
+
+      <Text style={styles.footnote}>TRANSCRIPT DELETED AFTER 90 DAYS</Text>
+
+      {submit.isError ? <ErrorNotice message="That could not be saved. Nothing was sent." /> : null}
+
+      <View style={styles.actions}>
+        <Button
+          label={
+            unowned.length > 0
+              ? `${unowned.length} still unassigned`
+              : `Send ${sending.length} task${sending.length === 1 ? '' : 's'}`
+          }
+          variant="accent"
+          disabled={unowned.length > 0 || sending.length === 0}
+          loading={submit.isPending}
+          onPress={send}
+          style={styles.grow}
+        />
+        <Button
+          label={editing ? 'Done' : 'Edit'}
+          variant="secondary"
+          onPress={() => setEditing((e) => !e)}
+        />
+      </View>
+    </HeroSheet>
   )
+}
+
+function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((p) => p[0]!.toUpperCase())
+    .join('')
+}
+
+function formatStamp(ms: number): string {
+  const total = Math.floor(ms / 1000)
+  const m = Math.floor(total / 60)
+  const sec = total % 60
+  return `${m}:${String(sec).padStart(2, '0')}`
+}
+
+function shortDate(iso: string): string {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+  })
 }
 
 function ActionCard({
@@ -281,20 +452,94 @@ function ActionCard({
 }
 
 const styles = StyleSheet.create({
-  head: { gap: space.xs, paddingTop: space.sm },
+  heroTitle: {
+    fontSize: font.size.display,
+    fontWeight: font.weight.bold,
+    color: colour.text,
+    letterSpacing: font.tracking.tight,
+    fontFamily: font.family,
+    paddingBottom: space.lg,
+  },
+  eyebrowRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  aiBadge: {
+    width: 40,
+    height: 40,
+    borderRadius: radius.md,
+    backgroundColor: colour.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  aiGlyph: { color: '#FFFFFF', fontSize: font.size.lg },
+  eyebrow: {
+    flex: 1,
+    fontSize: font.size.sm,
+    letterSpacing: font.tracking.label,
+    color: colour.accent,
+    fontFamily: font.mono,
+  },
   title: {
-    fontSize: font.size.xl,
+    fontSize: font.size.xxl,
     color: colour.text,
     fontWeight: font.weight.bold,
+    letterSpacing: font.tracking.snug,
     fontFamily: font.family,
   },
-  meta: { fontSize: font.size.sm, color: colour.textMuted, fontFamily: font.family },
+  meta: { fontSize: font.size.md, color: colour.textMuted, fontFamily: font.family },
+  sectionLabel: {
+    fontSize: font.size.xs,
+    letterSpacing: font.tracking.label,
+    color: colour.accent,
+    fontFamily: font.mono,
+  },
+  decisions: { backgroundColor: colour.surfaceRaised },
+  decision: { fontSize: font.size.lg, color: colour.text, lineHeight: 24, fontFamily: font.family },
 
-  nudge: { borderColor: colour.warning },
+  taskRow: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  who: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colour.successSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  whoInitials: { fontSize: font.size.xs, fontWeight: font.weight.bold, color: colour.success },
+  whoUnknown: { backgroundColor: colour.warningSoft },
+  whoUnknownGlyph: { fontSize: font.size.md, fontWeight: font.weight.bold, color: colour.warning },
+  taskTitle: {
+    flex: 1,
+    fontSize: font.size.lg,
+    fontWeight: font.weight.bold,
+    color: colour.text,
+    lineHeight: 22,
+    fontFamily: font.family,
+  },
+  tick: { fontSize: font.size.lg, color: colour.success },
+  taskSub: { fontSize: font.size.md, color: colour.textMuted, lineHeight: 20, fontFamily: font.family },
+  warnLine: { fontSize: font.size.md, color: colour.warning, fontFamily: font.family },
+  warnButton: { backgroundColor: colour.warning, borderColor: colour.warning },
+  droppedRow: { flexDirection: 'row', alignItems: 'center', gap: space.md, paddingVertical: space.xs },
+  droppedText: {
+    flex: 1,
+    fontSize: font.size.sm,
+    color: colour.textFaint,
+    textDecorationLine: 'line-through',
+    fontFamily: font.family,
+  },
+  undo: { fontSize: font.size.sm, color: colour.primary, fontWeight: font.weight.semibold },
+  footnote: {
+    fontSize: font.size.xs,
+    letterSpacing: font.tracking.label,
+    color: colour.textFaint,
+    fontFamily: font.mono,
+  },
+  actions: { flexDirection: 'row', gap: space.sm },
+  grow: { flex: 1 },
+
   body: {
     fontSize: font.size.md,
     color: colour.text,
-    lineHeight: 22,
+    lineHeight: 20,
     fontFamily: font.family,
   },
 
@@ -305,7 +550,7 @@ const styles = StyleSheet.create({
     fontSize: font.size.md,
     color: colour.text,
     fontWeight: font.weight.semibold,
-    lineHeight: 22,
+    lineHeight: 20,
     fontFamily: font.family,
   },
   struck: { textDecorationLine: 'line-through', color: colour.textMuted },
@@ -329,7 +574,7 @@ const styles = StyleSheet.create({
   quoteText: {
     fontSize: font.size.sm,
     color: colour.textMuted,
-    lineHeight: 21,
+    lineHeight: 19,
     fontStyle: 'italic',
     fontFamily: font.family,
   },
@@ -347,5 +592,4 @@ const styles = StyleSheet.create({
   ownerLabelSelected: { color: colour.primary, fontWeight: font.weight.semibold },
 
   faint: { fontSize: font.size.sm, color: colour.textMuted, fontFamily: font.family },
-  footer: { gap: space.sm },
 })

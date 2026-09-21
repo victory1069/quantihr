@@ -47,7 +47,10 @@ export default function NewMeeting() {
   const [startTime, setStartTime] = useState('09:00')
   const [endTime, setEndTime] = useState('10:00')
   const [venue, setVenue] = useState('')
-  const [invitees, setInvitees] = useState<string[]>([])
+  // employeeId → optional. Present means invited; the flag is whether their
+  // absence counts. Required is the default: a meeting you call people to
+  // is one you expect them at.
+  const [invitees, setInvitees] = useState<Map<string, boolean>>(new Map())
 
   // The manager's own team is the roster worth offering. Anyone else in the org
   // can still check in with the code; they simply are not expected, so they
@@ -169,29 +172,49 @@ export default function NewMeeting() {
 
       <Appear index={3}>
         <Card>
-          <Label>Who is expected?</Label>
+          <Label>Who should be there?</Label>
           <Text style={styles.meta}>
-            Only people you pick can be marked absent. Anyone else can still check in.
+            Tap once to invite as required, again to make it optional, a third time to remove.
+            Everyone invited gets a notification to accept or decline.
           </Text>
           <View style={styles.people}>
             {roster.map((person) => {
-              const on = invitees.includes(person.employeeId)
+              const state = invitees.has(person.employeeId)
+                ? invitees.get(person.employeeId)
+                  ? 'optional'
+                  : 'required'
+                : 'off'
               return (
                 <Press
                   key={person.employeeId}
-                  accessibilityLabel={person.employeeName}
+                  accessibilityLabel={`${person.employeeName}, ${state}`}
                   scaleTo={0.96}
                   onPress={() =>
-                    setInvitees((prev) =>
-                      on
-                        ? prev.filter((id) => id !== person.employeeId)
-                        : [...prev, person.employeeId],
-                    )
+                    setInvitees((prev) => {
+                      const next = new Map(prev)
+                      if (state === 'off') next.set(person.employeeId, false)
+                      else if (state === 'required') next.set(person.employeeId, true)
+                      else next.delete(person.employeeId)
+                      return next
+                    })
                   }
                 >
-                  <View style={[styles.person, on && styles.personOn]}>
-                    <Text style={[styles.personLabel, on && styles.personLabelOn]}>
+                  <View
+                    style={[
+                      styles.person,
+                      state === 'required' && styles.personOn,
+                      state === 'optional' && styles.personOptional,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.personLabel,
+                        state === 'required' && styles.personLabelOn,
+                        state === 'optional' && styles.personLabelOptional,
+                      ]}
+                    >
                       {person.employeeName}
+                      {state === 'optional' ? ' · optional' : ''}
                     </Text>
                   </View>
                 </Press>
@@ -216,7 +239,7 @@ export default function NewMeeting() {
                   title: title.trim(),
                   scheduledStart: new Date(`${date}T${startTime}:00`).toISOString(),
                   scheduledEnd: new Date(`${date}T${endTime}:00`).toISOString(),
-                  inviteeIds: invitees,
+                  invitees: [...invitees].map(([employeeId, optional]) => ({ employeeId, optional })),
                   physical: kind === 'physical',
                   venue: venue.trim(),
                 },
@@ -255,7 +278,7 @@ const styles = StyleSheet.create({
   meta: {
     fontSize: font.size.sm,
     color: colour.textMuted,
-    lineHeight: 20,
+    lineHeight: 18,
     fontFamily: font.family,
   },
 
@@ -281,6 +304,8 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: colour.border,
   },
+  personOptional: { borderColor: colour.accent, backgroundColor: colour.accentSoft },
+  personLabelOptional: { color: colour.accent, fontWeight: font.weight.semibold },
   personOn: { borderColor: colour.primaryBorder, backgroundColor: colour.primarySoft },
   personLabel: { fontSize: font.size.sm, color: colour.textMuted, fontFamily: font.family },
   personLabelOn: { color: colour.primary, fontWeight: font.weight.semibold },

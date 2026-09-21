@@ -32,7 +32,20 @@ let app: FastifyInstance
 let org: TestOrg
 let other: TestOrg
 
-const at = (hhmm: string): Date => new Date(`2026-09-07T${hhmm}:00.000Z`)
+/**
+ * The fixture meeting happened yesterday, relative to whenever the suite runs.
+ *
+ * It used to be a fixed date, which passed for exactly one week: the dispute
+ * window is seven days, so the day the fixture aged past it every dispute test
+ * started returning 422 with nothing in the code having changed. Anchoring to
+ * "yesterday" keeps it inside every window the product has, permanently.
+ */
+const FIXTURE_DAY = (() => {
+  const d = new Date()
+  d.setUTCDate(d.getUTCDate() - 1)
+  return d.toISOString().slice(0, 10)
+})()
+const at = (hhmm: string): Date => new Date(`${FIXTURE_DAY}T${hhmm}:00.000Z`)
 
 /**
  * A stub that answers `messages.parse` with a fixed extraction.
@@ -280,8 +293,8 @@ describe('conference ingestion', () => {
         orgId: org.orgId,
         employeeId: org.employeeId,
         leaveTypeId: org.leaveTypeId,
-        startDate: '2026-09-07',
-        endDate: '2026-09-07',
+        startDate: FIXTURE_DAY,
+        endDate: FIXTURE_DAY,
         daysCount: '1',
         status: 'approved',
       })
@@ -956,5 +969,96 @@ describe('meeting check-in codes', () => {
     })
     expect(asStaff.statusCode).toBe(200)
     expect(asStaff.json().meetings).toEqual([])
+  })
+})
+
+describe('invitations', () => {
+  it('invites people as required or optional and tells each of them', async () => {
+    const start = new Date(Date.now() + 86_400_000)
+    const end = new Date(start.getTime() + 3_600_000)
+    const res = await app.inject({
+      method: 'POST',
+      url: '/v1/meetings',
+      headers: bearer(org.managerToken),
+      payload: {
+        title: 'Ops weekly',
+        scheduledStart: start.toISOString(),
+        scheduledEnd: end.toISOString(),
+        source: 'google_meet',
+        invitees: [{ employeeId: org.employeeId, optional: true }],
+      },
+    })
+    expect(res.statusCode).toBe(201)
+    const id = res.json().id as string
+
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/v1/meetings/${id}`,
+      headers: bearer(org.accessToken),
+    })
+    const me = detail.json().participants.find((p: { employeeId: string }) => p.employeeId === org.employeeId)
+    expect(me.inviteStatus).toBe('needs_action')
+    expect(me.isOptional).toBe(true)
+    expect(me.expected).toBe(false)
+    expect(detail.json().source).toBe('google_meet')
+
+    const inbox = await app.inject({
+      method: 'GET',
+      url: '/v1/notifications',
+      headers: bearer(org.accessToken),
+    })
+    const invite = inbox.json().notifications.find((n: { event: string }) => n.event === 'meeting.invited')
+    expect(invite).toBeTruthy()
+    expect(invite.body).toContain('Virtual')
+    expect(invite.body).toContain('Optional')
+    expect(invite.data.actions).toEqual(['accept', 'decline'])
+  })
+
+  it('records the answer, and a required decline reaches the host', async () => {
+    const start = new Date(Date.now() + 86_400_000)
+    const created = await app.inject({
+      method: 'POST',
+      url: '/v1/meetings',
+      headers: bearer(org.managerToken),
+      payload: {
+        title: 'Budget review',
+        scheduledStart: start.toISOString(),
+        scheduledEnd: new Date(start.getTime() + 1_800_000).toISOString(),
+        invitees: [{ employeeId: org.employeeId, optional: false }],
+      },
+    })
+    const id = created.json().id as string
+
+    const rsvp = await app.inject({
+      method: 'POST',
+      url: `/v1/meetings/${id}/rsvp`,
+      headers: bearer(org.accessToken),
+      payload: { response: 'declined' },
+    })
+    expect(rsvp.statusCode).toBe(204)
+
+    const detail = await app.inject({ method: 'GET', url: `/v1/meetings/${id}`, headers: bearer(org.managerToken) })
+    const me = detail.json().participants.find((p: { employeeId: string }) => p.employeeId === org.employeeId)
+    expect(me.inviteStatus).toBe('declined')
+
+    const hostInbox = await app.inject({ method: 'GET', url: '/v1/notifications', headers: bearer(org.managerToken) })
+    expect(hostInbox.json().notifications.some((n: { event: string }) => n.event === 'meeting.rsvp')).toBe(true)
+
+    // The invitation in the inbox remembers the answer and is read.
+    const myInbox = await app.inject({ method: 'GET', url: '/v1/notifications', headers: bearer(org.accessToken) })
+    const invite = myInbox.json().notifications.find(
+      (n: { event: string; data: { meetingId?: string } }) => n.event === 'meeting.invited' && n.data.meetingId === id,
+    )
+    expect(invite.data.answered).toBe('declined')
+    expect(invite.readAt).toBeTruthy()
+
+    // Someone who was not invited cannot answer.
+    const outsider = await app.inject({
+      method: 'POST',
+      url: `/v1/meetings/${id}/rsvp`,
+      headers: bearer(other.accessToken),
+      payload: { response: 'accepted' },
+    })
+    expect(outsider.statusCode).toBe(404)
   })
 })

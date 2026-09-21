@@ -23,6 +23,8 @@ import { BiometricGate } from '../src/ui/BiometricGate'
 import { SyncBanner } from '../src/ui/SyncBanner'
 import { colour } from '../src/ui/theme'
 import { restoreSession, useSession } from '../src/store/session'
+import { useMe } from '../src/api/queries'
+import { listenForNotificationTaps, registerForPush } from '../src/lib/push'
 import { drainOutbox } from '../src/api/sync'
 import { startSyncLoop } from '../src/api/sync-loop'
 
@@ -60,8 +62,37 @@ persistQueryClient({
   },
 })
 
+/**
+ * Keeps the session store's `me` in step with the profile query, for every
+ * screen, from the moment the session exists. Before this lived on Home, a
+ * screen opened directly — a deep link, a restart on a manager page — saw
+ * `me` as null and, for the role-gated ones, denied a manager their own team.
+ */
+function ProfileSync() {
+  const status = useSession((s) => s.status)
+  const setMe = useSession((s) => s.setMe)
+  const me = useMe({ enabled: status === 'authenticated' })
+  const router = useRouter()
+  useEffect(() => {
+    if (me.data) setMe(me.data)
+  }, [me.data, setMe])
+
+  // Push: register the token once a session exists, and act on taps.
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    void registerForPush()
+    let stop: (() => void) | undefined
+    void listenForNotificationTaps(router).then((s) => {
+      stop = s
+    })
+    return () => stop?.()
+  }, [status, router])
+  return null
+}
+
 export default function RootLayout() {
   const status = useSession((s) => s.status)
+  const mustChangePassword = useSession((s) => s.mustChangePassword)
   const [bootstrapped, setBootstrapped] = useState(false)
   const router = useRouter()
   const segments = useSegments()
@@ -89,15 +120,27 @@ export default function RootLayout() {
    * half-visible shell behind a setup flow invites tapping past it.
    */
   const root = segments[0] as string | undefined
-  const onAuthRoute = root === 'sign-in' || root === 'auth'
+  // Onboarding starts signed out — the invite email, the link, the code all
+  // happen before a session exists — so it has to be reachable without one.
+  const onAuthRoute = root === 'sign-in' || root === 'auth' || root === 'onboarding'
   // Onboarding, unlock and recovery own the whole screen: a half-visible tab
   // bar behind a setup or lockout flow invites tapping past it.
+  // Decision sheets own the screen too: their buttons sit at the bottom,
+  // where a floating tab bar would cover them, and the way out is the back
+  // control in the sheet, not a tab.
+  const decisionSheet =
+    (root === 'manage' && segments[1] === 'approvals' && !!segments[2]) ||
+    (root === 'manage' && segments[1] === 'training' && !!segments[2]) ||
+    (root === 'meetings' && segments[2] === 'review') ||
+    (root === 'learning' && !!segments[1])
   const fullScreen =
     onAuthRoute ||
     root === 'welcome' ||
     root === 'onboarding' ||
     root === 'unlock' ||
-    root === 'recover'
+    root === 'recover' ||
+    root === 'change-password' ||
+    decisionSheet
 
   useEffect(() => {
     if (!bootstrapped) return
@@ -105,15 +148,21 @@ export default function RootLayout() {
     if (status === 'signed-out' && !onAuthRoute) {
       redirected.current = true
       router.replace('/sign-in')
+    } else if (status === 'authenticated' && mustChangePassword && root !== 'change-password') {
+      // A temporary password opens exactly one screen. This catches the
+      // case sign-in itself does not: a restored session, or /v1/me
+      // reporting the flag after HR reset the password remotely.
+      router.replace('/change-password')
     } else if (status === 'authenticated' && onAuthRoute && redirected.current) {
       redirected.current = false
       router.replace('/')
     }
-  }, [status, onAuthRoute, bootstrapped, router])
+  }, [status, mustChangePassword, root, onAuthRoute, bootstrapped, router])
 
   return (
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
+        <ProfileSync />
         <StatusBar style="light" />
         <View style={styles.root}>
           {status === 'authenticated' && !fullScreen ? <AppHeader /> : null}
@@ -121,8 +170,12 @@ export default function RootLayout() {
             screenOptions={{
               headerShown: false,
               contentStyle: { backgroundColor: colour.bg },
-              animation: 'fade',
-              animationDuration: 180,
+              // Pushed screens slide up like a sheet, matching how content
+              // arrives inside a page; a fade for the tab roots so switching
+              // tabs feels like changing what is under the bar, not opening a
+              // new thing.
+              animation: 'slide_from_bottom',
+              animationDuration: 260,
             }}
           />
           {status === 'authenticated' && !fullScreen ? (

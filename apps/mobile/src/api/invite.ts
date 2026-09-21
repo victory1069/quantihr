@@ -30,7 +30,7 @@ export interface Invite {
 }
 
 const UNRESOLVED: Invite = {
-  orgName: 'your employer',
+  orgName: 'Your employer',
   email: null,
   phoneHint: null,
   found: true,
@@ -57,7 +57,7 @@ export function useInvite(emailOverride?: string) {
         if (!response.ok) return UNRESOLVED
 
         const body = (await response.json()) as Invite
-        return { ...body, orgName: body.orgName ?? 'your employer' }
+        return { ...body, orgName: body.orgName ?? 'Your employer' }
       } catch {
         return UNRESOLVED
       }

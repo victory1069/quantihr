@@ -35,7 +35,7 @@ const OTP_LOCKOUT_MINUTES = 15
  * this belongs in front of the app anyway (an ALB rule or a Redis counter).
  * What matters is that neither endpoint ships unbounded.
  */
-class RateLimiter {
+export class RateLimiter {
   private hits = new Map<string, { count: number; resetAt: number }>()
 
   constructor(

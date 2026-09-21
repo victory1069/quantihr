@@ -41,3 +41,19 @@ export type {
   ReportKind,
 } from './schemas/reports.js'
 export { REPORT_KINDS } from './schemas/reports.js'
+export type { PolicyAnswer, AskResponse, PolicyDocumentView } from './schemas/policy.js'
+export type { AttendanceStatusResponse } from './schemas/attendance.js'
+export type { DocumentItem } from './schemas/documents.js'
+export type {
+  CheckConflictsResponse,
+  LeaveBalanceView,
+  LeaveRequestView,
+  LeaveType,
+} from './schemas/leave.js'
+export type { ApprovalItem, TeamAttendanceResponse, TeamCalendarResponse } from './schemas/team.js'
+export type {
+  TrainingItemInput,
+  TrainingItemView,
+  TrainingPlanView,
+  TrainingPeriod,
+} from './schemas/training.js'

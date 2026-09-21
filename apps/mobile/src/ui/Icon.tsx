@@ -27,6 +27,7 @@ export type IconName =
   | 'insights'
   | 'todos'
   | 'team'
+  | 'learning'
 
 interface IconProps {
   name: IconName
@@ -36,7 +37,7 @@ interface IconProps {
   accent?: string
 }
 
-export function Icon({ name, size = 24, color = colour.textMuted, accent }: IconProps) {
+export function Icon({ name, size = 22, color = colour.textMuted, accent }: IconProps) {
   const s = size / 24
   const stroke = Math.max(1.6, 2 * s)
   const tint = accent ?? color
@@ -364,6 +365,42 @@ export function Icon({ name, size = 24, color = colour.textMuted, accent }: Icon
       )
 
     // Ascending bars with a marker dot.
+    // An open book: two pages, the spine between, a tinted line on the right.
+    case 'learning':
+      return (
+        <View style={box}>
+          <View
+            style={{
+              position: 'absolute',
+              left: 3 * s,
+              top: 5 * s,
+              width: 9 * s,
+              height: 14 * s,
+              borderTopLeftRadius: 2 * s,
+              borderBottomLeftRadius: 2 * s,
+              borderWidth: stroke,
+              borderColor: color,
+            }}
+          />
+          <View
+            style={{
+              position: 'absolute',
+              left: 12 * s,
+              top: 5 * s,
+              width: 9 * s,
+              height: 14 * s,
+              borderTopRightRadius: 2 * s,
+              borderBottomRightRadius: 2 * s,
+              borderWidth: stroke,
+              borderColor: color,
+            }}
+          />
+          <View style={line({ left: 6 * s, top: 9 * s, width: 3.5 * s, height: stroke })} />
+          <View style={line({ left: 6 * s, top: 12.5 * s, width: 3.5 * s, height: stroke })} />
+          <View style={line({ left: 14.5 * s, top: 9 * s, width: 3.5 * s, height: stroke, backgroundColor: tint })} />
+        </View>
+      )
+
     case 'insights':
       return (
         <View style={box}>

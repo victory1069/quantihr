@@ -18,6 +18,11 @@ import { registerPayrollRoutes } from './routes/payroll.js'
 import { registerInviteRoutes } from './routes/invite.js'
 import { registerMeetingRoutes } from './routes/meetings.js'
 import { registerReportRoutes } from './routes/reports.js'
+import { registerPlatformRoutes } from './routes/platform.js'
+import { registerOnboardingRoutes } from './routes/onboarding.js'
+import { registerPolicyRoutes } from './routes/policy.js'
+import { registerTrainingRoutes } from './routes/training.js'
+import { registerSignupRoutes } from './routes/signup.js'
 
 export async function buildServer(db: Database): Promise<FastifyInstance> {
   const app = Fastify({
@@ -50,15 +55,21 @@ export async function buildServer(db: Database): Promise<FastifyInstance> {
   // The HR console is a static page served by the API itself (spec §13 leaves
   // the console framework open). It authenticates over the same /v1 endpoints
   // as the mobile client and holds no privileges of its own.
-  const consoleHtml = await readFile(
-    join(dirname(fileURLToPath(import.meta.url)), 'console/index.html'),
-    'utf8',
+  const consoleHtml = (
+    await readFile(join(dirname(fileURLToPath(import.meta.url)), 'console/index.html'), 'utf8')
   )
+    // The console is static; the one deployment-specific value it needs is
+    // which Google client to initialise the sign-in button with.
+    .replace('__GOOGLE_SSO_WEB_CLIENT_ID__', env().GOOGLE_SSO_WEB_CLIENT_ID ?? '')
   const serveConsole = async (_req: unknown, reply: { type: (t: string) => { send: (b: string) => unknown } }) =>
     reply.type('text/html; charset=utf-8').send(consoleHtml)
 
   app.get('/console', serveConsole)
   app.get('/console/', serveConsole)
+  // Sign-in links are `${APP_URL}/auth/callback?token=…`. With APP_URL set to
+  // the console (…/console), that lands here; the page reads the token from
+  // the query string on boot, so it just needs to be served.
+  app.get('/console/auth/callback', serveConsole)
 
   // Optional backdrop for the sign-in hero. Drop a clip at src/console/hero.mp4
   // and it plays; with no file this 404s and the page falls back to the
@@ -85,6 +96,11 @@ export async function buildServer(db: Database): Promise<FastifyInstance> {
   registerPayrollRoutes(app, db)
   registerMeetingRoutes(app, db)
   registerReportRoutes(app, db)
+  registerPlatformRoutes(app, db)
+  registerOnboardingRoutes(app, db)
+  registerPolicyRoutes(app, db)
+  registerTrainingRoutes(app, db)
+  registerSignupRoutes(app, db)
   registerAdminRoutes(app, db)
 
   return app

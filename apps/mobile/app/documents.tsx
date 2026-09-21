@@ -137,7 +137,7 @@ const styles = StyleSheet.create({
     color: colour.text,
     paddingTop: space.lg,
   },
-  sub: { fontSize: font.size.md, color: colour.textMuted, lineHeight: 21 },
+  sub: { fontSize: font.size.md, color: colour.textMuted, lineHeight: 19 },
   row: { flexDirection: 'row', alignItems: 'flex-start', gap: space.md },
   name: { fontSize: font.size.md, fontWeight: font.weight.medium, color: colour.text },
   meta: { fontSize: font.size.sm, color: colour.textMuted },

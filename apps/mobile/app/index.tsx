@@ -11,17 +11,17 @@
  * spinner (spec §5).
  */
 
-import { useMemo } from 'react'
+import { useEffect, useMemo } from 'react'
 import { Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native'
 import { useRouter } from 'expo-router'
 import { useQueryClient } from '@tanstack/react-query'
 import {
   Appear,
+  SheetPage,
   Button,
   Card,
   Divider,
   EmptyState,
-  Screen,
   Skeleton,
 } from '../src/ui/components'
 import { Figure, Label, Stat, StatRow } from '../src/ui/primitives'
@@ -34,10 +34,20 @@ import {
   useMe,
   usePayslips,
 } from '../src/api/queries'
-import { useSession } from '../src/store/session'
+import { isManager, useSession } from '../src/store/session'
+import { ManagerHome } from '../src/ui/ManagerHome'
 import { formatNairaCompact } from '../src/lib/money'
 
 export default function Home() {
+  const managerMode = useSession((s) => s.managerMode)
+  const sessionMe = useSession((s) => s.me)
+  // A manager opens the app for their queue; that is a different screen, not
+  // a variant of this one. Same route so the tab bar and deep links agree.
+  if (managerMode && isManager(sessionMe)) return <ManagerHome />
+  return <EmployeeHome />
+}
+
+function EmployeeHome() {
   const router = useRouter()
   const queryClient = useQueryClient()
 
@@ -48,9 +58,15 @@ export default function Home() {
   const payslips = usePayslips()
   const deviceReview = useSession((s) => s.deviceReviewRequired)
 
-  if (me.data && useSession.getState().me?.employee.id !== me.data.employee.id) {
-    useSession.getState().setMe(me.data)
-  }
+  // Mirror the fetched profile into the session store. In an effect, not the
+  // render body: calling a store setter while rendering updates every other
+  // subscriber mid-render, which React flags as "Cannot update a component
+  // (BiometricGate) while rendering a different component (Home)".
+  useEffect(() => {
+    if (me.data && useSession.getState().me?.employee.id !== me.data.employee.id) {
+      useSession.getState().setMe(me.data)
+    }
+  }, [me.data])
 
   const refreshing =
     me.isRefetching || status.isRefetching || balances.isRefetching || requests.isRefetching
@@ -79,7 +95,32 @@ export default function Home() {
   const pendingDays = balances.data?.balances.reduce((sum, b) => sum + b.pending, 0) ?? 0
 
   return (
-    <Screen
+    <SheetPage
+      eyebrow={today}
+      title={primary.title ?? greeting}
+      heroBody={
+        status.data ? (
+          primary.pill ? (
+            <View style={styles.pill}>
+              <View style={styles.pillDot} />
+              <Text style={styles.pillText}>{primary.pill}</Text>
+            </View>
+          ) : (
+            <>
+              <Label tone={primary.actionLabel ? 'primary' : 'faint'}>{primary.eyebrow}</Label>
+              <Text style={styles.checkinBody}>{primary.detail}</Text>
+              {primary.actionLabel ? (
+                <Button label={primary.actionLabel} onPress={() => router.push('/checkin')} />
+              ) : null}
+            </>
+          )
+        ) : (
+          <>
+            <Skeleton height={12} width={140} />
+            <Skeleton height={18} />
+          </>
+        )
+      }
       refreshControl={
         <RefreshControl
           refreshing={refreshing}
@@ -88,12 +129,6 @@ export default function Home() {
         />
       }
     >
-      <Appear index={0}>
-        <View style={styles.header}>
-          <Text style={styles.date}>{today}</Text>
-          <Text style={styles.greeting}>{greeting}</Text>
-        </View>
-      </Appear>
 
       {/* Leave and pay lead, per spec §3 "give before you take". */}
       <Appear index={1}>
@@ -142,29 +177,10 @@ export default function Home() {
         </Appear>
       ) : null}
 
-      {/* Check-in */}
-      <Appear index={3}>
-        {status.data ? (
-          <Card tone={primary.actionLabel ? 'primary' : 'default'}>
-            <Label tone={primary.actionLabel ? 'primary' : 'faint'}>{primary.eyebrow}</Label>
-            <Text style={styles.checkinBody}>{primary.detail}</Text>
-            {primary.actionLabel ? (
-              <Button label={primary.actionLabel} onPress={() => router.push('/checkin')} />
-            ) : null}
-          </Card>
-        ) : (
-          <Card>
-            <Skeleton height={14} width={160} />
-            <Skeleton height={20} />
-            <Skeleton height={52} />
-          </Card>
-        )}
-      </Appear>
-
-      {/* Anything needing the employee's response, in accent pink. */}
+      {/* Waiting on a decision. Violet: pink is reserved for absent and overdue. */}
       {requests.data && requests.data.requests.length > 0 ? (
         <Appear index={4}>
-          <Card tone="danger" onPress={() => router.push('/leave')}>
+          <Card tone="pending" onPress={() => router.push('/leave')}>
             <View style={styles.actionRow}>
               <View style={styles.actionDot} />
               <View style={{ flex: 1, gap: 2 }}>
@@ -233,7 +249,7 @@ export default function Home() {
           )}
         </View>
       </Appear>
-    </Screen>
+    </SheetPage>
   )
 }
 
@@ -302,8 +318,12 @@ function monthName(iso: string): string {
 }
 
 interface PrimaryAction {
+  /** Replaces the greeting when the day's state is the headline. */
+  title?: string
   eyebrow: string
   detail: string
+  /** A verified state, shown as a pill instead of eyebrow + detail. */
+  pill?: string
   actionLabel: string | null
 }
 
@@ -324,11 +344,15 @@ function usePrimaryAction(
         })
       : ''
     return {
+      title: `Checked in\nat ${at}`,
       eyebrow: `CHECKED IN · ${at}`,
       detail:
         record.minutesLate > 0
           ? `${record.minutesLate} minutes after your ${status.schedule.startTime} start.`
           : `On time against your ${status.schedule.startTime} start.`,
+      // Every accepted check-in passed both checks; that is what the pill
+      // attests, next to whether it was on time.
+      pill: `${record.minutesLate > 0 ? `${record.minutesLate} MIN LATE` : 'ON TIME'} · GEOFENCE + CODE`,
       actionLabel: null,
     }
   }
@@ -344,14 +368,14 @@ function usePrimaryAction(
   switch (status.window.reason) {
     case 'open':
       return {
-        eyebrow: `CHECK-IN OPEN · CLOSES ${status.window.closesAt}`,
-        detail: `${where} · tap to record today`,
+        eyebrow: `CHECK IN BY ${status.window.closesAt}`,
+        detail: status.location ? `You're near ${where}` : `${where} · tap to record today`,
         actionLabel: 'Check in',
       }
     case 'too_early':
       return {
         eyebrow: `CHECK-IN OPENS ${status.window.opensAt}`,
-        detail: `That is in ${formatMinutes(status.window.minutesUntilOpen)}.`,
+        detail: `That is in ${formatMinutes(status.window.minutesUntilOpen)} — we'll remind you.`,
         actionLabel: null,
       }
     case 'too_late':
@@ -362,6 +386,7 @@ function usePrimaryAction(
       }
     default:
       return {
+        title: 'Nothing needs\nyou today',
         eyebrow: 'NOT A WORKING DAY',
         detail: 'Check-in resumes on your next scheduled day.',
         actionLabel: null,
@@ -378,22 +403,31 @@ function formatMinutes(total: number): string {
 
 const styles = StyleSheet.create({
   header: { paddingTop: space.sm, gap: 2 },
-  date: { fontSize: font.size.md, color: colour.textMuted, fontFamily: font.family },
-  greeting: {
-    fontSize: font.size.xxl,
-    fontWeight: font.weight.bold,
-    color: colour.text,
-    letterSpacing: font.tracking.tight,
-    fontFamily: font.family,
-  },
 
   statSkeleton: { flex: 1, gap: space.sm },
 
   checkinBody: {
-    fontSize: font.size.md,
-    color: colour.text,
-    lineHeight: 22,
+    fontSize: font.size.lg,
+    color: colour.textMuted,
+    lineHeight: 23,
     fontFamily: font.family,
+  },
+  pill: {
+    alignSelf: 'flex-start',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: space.sm,
+    paddingHorizontal: space.md,
+    paddingVertical: space.sm,
+    borderRadius: radius.pill,
+    backgroundColor: colour.successSoft,
+  },
+  pillDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colour.success },
+  pillText: {
+    fontSize: font.size.sm,
+    color: colour.success,
+    letterSpacing: font.tracking.label,
+    fontFamily: font.mono,
   },
 
   warnTitle: {
@@ -405,7 +439,7 @@ const styles = StyleSheet.create({
   warnBody: {
     fontSize: font.size.sm,
     color: colour.warning,
-    lineHeight: 20,
+    lineHeight: 18,
     fontFamily: font.family,
   },
 

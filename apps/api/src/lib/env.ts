@@ -33,6 +33,14 @@ const schema = z.object({
    * before AWS lifts the SES sandbox.
    */
   EMAIL_DRIVER: z.enum(['console', 'ses', 'smtp']).default('console'),
+  /**
+   * Google sign-in. Comma-separated OAuth client ids the API accepts ID
+   * tokens from — the web client, and the Android and iOS clients of the
+   * app. Unset, the SSO endpoint answers 503 and the buttons are hidden.
+   */
+  GOOGLE_SSO_CLIENT_IDS: z.string().optional(),
+  /** The web client id the console initialises Google's button with. */
+  GOOGLE_SSO_WEB_CLIENT_ID: z.string().optional(),
   /** Must be a verified identity on the provider, or everything bounces. */
   EMAIL_FROM: z.string().default('Quanti HR <no-reply@localhost>'),
   AWS_REGION: z.string().default('eu-west-1'),
@@ -64,6 +72,12 @@ const schema = z.object({
   TWILIO_ACCOUNT_SID: z.string().optional(),
   TWILIO_AUTH_TOKEN: z.string().optional(),
   TWILIO_FROM: z.string().optional(),
+
+  /**
+   * Gates org provisioning. Absent → the endpoint refuses to run, so a
+   * deployment cannot expose open org creation by forgetting to set it.
+   */
+  PLATFORM_API_KEY: z.string().min(32).optional(),
 
   APP_URL: z.string().default('http://localhost:8081'),
   CORS_ORIGINS: z.string().default('*'),

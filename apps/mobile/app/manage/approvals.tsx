@@ -1,341 +1,286 @@
 /**
- * Manager approval queue (spec §5).
+ * The manager's queue (spec §6).
  *
- * **Collapsed by default.** A queue of full cards meant three requests filled
- * the screen and a manager with a dozen was scrolling past detail they had not
- * asked for yet. Each row now carries only what triage needs — who, what kind
- * of leave, how many days, and the dates — and opens on tap.
+ * One list of everything that needs a decision or a conversation: leave
+ * requests first, then people drifting towards the lateness threshold. Each
+ * request card carries its own decision. A clean request can be approved
+ * from the card; one with coverage conflicts opens the detail sheet, because
+ * approving against a rule needs a written reason and that reason is
+ * recorded against the manager's name.
  *
- * Nothing is decided from the collapsed row, deliberately. Approve and decline
- * live inside the expanded card next to the coverage warnings and the balance,
- * because those are the facts the decision turns on and a one-tap approve
- * beside a summary invites deciding without them.
- *
- * The coverage context is re-evaluated server-side when this list is fetched, so
- * a manager decides against today's team calendar rather than the warnings that
- * were true when the employee submitted.
+ * The 48-hour line is the product's promise to the employee: a request left
+ * that long escalates. The headline counts down to it.
  */
 
-import { useState } from 'react'
-import { RefreshControl, StyleSheet, Text, TextInput, View } from 'react-native'
+import { useMemo, useState } from 'react'
+import { RefreshControl, StyleSheet, Text, View } from 'react-native'
+import { useRouter } from 'expo-router'
 import { useQueryClient } from '@tanstack/react-query'
 import { ApiError } from '@quanti/shared'
 import {
   Appear,
-  Badge,
   Button,
   Card,
-  Divider,
   EmptyState,
   ErrorNotice,
   Press,
-  Screen,
+  SheetPage,
   Skeleton,
 } from '../../src/ui/components'
-import { colour, font, radius, space } from '../../src/ui/theme'
-import { keys, useApprovals, useDecideApproval, useMe } from '../../src/api/queries'
+import { Avatar } from '../../src/ui/primitives'
+import { colour, font, space } from '../../src/ui/theme'
+import {
+  keys,
+  useApprovals,
+  useDecideApproval,
+  useMe,
+  useTeamAttendance,
+  useTeamTraining,
+} from '../../src/api/queries'
 import { isManager, useSession } from '../../src/store/session'
+import { formatRange } from '../../src/lib/dates'
+
+const ESCALATION_HOURS = 48
 
 export default function Approvals() {
+  const router = useRouter()
   const queryClient = useQueryClient()
-  // `me` is null both before it loads and when the account genuinely has no
-  // manager role, and those are not the same answer. Treating them as one told
-  // a manager on a cold start that they lacked permission, which reads as an
-  // account problem rather than a spinner.
   const meQuery = useMe()
   const me = useSession((s) => s.me) ?? meQuery.data ?? null
   const canManage = isManager(me)
   const approvals = useApprovals(canManage)
   const decide = useDecideApproval()
-
-  const [expanded, setExpanded] = useState<string | null>(null)
-  const [note, setNote] = useState('')
-  const [override, setOverride] = useState('')
   const [error, setError] = useState<{ id: string; message: string } | null>(null)
+
+  // Lateness over the last 30 days — the window the threshold is judged on.
+  const { from, to } = useMemo(() => {
+    const today = new Date()
+    const start = new Date(today)
+    start.setDate(start.getDate() - 30)
+    return { from: start.toISOString().slice(0, 10), to: today.toISOString().slice(0, 10) }
+  }, [])
+  const attendance = useTeamAttendance(from, to, canManage)
+  const training = useTeamTraining(canManage)
 
   if (!me) {
     return (
-      <Screen>
+      <SheetPage tone="manager" eyebrow="Manager mode" title="Loading">
         <Card>
           <Skeleton height={24} width={160} />
           <Skeleton height={64} />
         </Card>
-      </Screen>
+      </SheetPage>
     )
   }
 
   if (!canManage) {
     return (
-      <Screen>
+      <SheetPage title="Approvals">
         <EmptyState
           title="Manager access only"
           body="Your account does not have approval permissions."
         />
-      </Screen>
+      </SheetPage>
     )
   }
 
-  const act = async (
-    id: string,
-    decision: 'approve' | 'decline',
-    requiresOverride: boolean,
-  ) => {
+  const queue = approvals.data?.approvals ?? []
+  const threshold = attendance.data?.latenessThreshold ?? 3
+  // Worth a word once they are one late arrival from the threshold.
+  const flags = (attendance.data?.rows ?? []).filter(
+    (r) => r.daysLate >= Math.max(1, threshold - 1),
+  )
+
+  const plansWaiting = (training.data?.plans ?? []).filter((p) => p.status === 'submitted')
+  const needs = queue.length + flags.length + plansWaiting.length
+  const oldest = queue.reduce((max, a) => Math.max(max, a.waitingHours), 0)
+  const escalatesIn = queue.length > 0 ? Math.max(0, Math.round(ESCALATION_HOURS - oldest)) : null
+
+  const approveClean = async (id: string) => {
     setError(null)
-
-    if (decision === 'approve' && requiresOverride && override.trim().length < 10) {
-      setError({
-        id,
-        message: 'This request breaches a coverage rule. Give a reason (at least 10 characters) to approve it.',
-      })
-      setExpanded(id)
-      return
-    }
-
     try {
-      await decide.mutateAsync({
-        id,
-        decision,
-        note: note.trim() || undefined,
-        overrideReason: requiresOverride ? override.trim() : undefined,
-      })
-      setExpanded(null)
-      setNote('')
-      setOverride('')
+      await decide.mutateAsync({ id, decision: 'approve' })
     } catch (e) {
-      setError({
-        id,
-        message: e instanceof ApiError ? e.message : 'Could not record that decision.',
-      })
+      setError({ id, message: e instanceof ApiError ? e.message : 'Could not record that decision.' })
+    }
+  }
+
+  const declineFromCard = async (id: string) => {
+    setError(null)
+    try {
+      await decide.mutateAsync({ id, decision: 'decline' })
+    } catch (e) {
+      setError({ id, message: e instanceof ApiError ? e.message : 'Could not record that decision.' })
     }
   }
 
   return (
-    <Screen
+    <SheetPage
+      tone="manager"
+      eyebrow="Manager mode"
+      title={needs === 0 ? 'Nothing needs you' : `${needs} need you`}
+      heroBody={
+        escalatesIn !== null ? (
+          <Text style={styles.escalates}>
+            {escalatesIn === 0 ? '1 has passed the 48-hour mark' : `1 escalates in ${escalatesIn} hours`}
+          </Text>
+        ) : undefined
+      }
       refreshControl={
         <RefreshControl
           refreshing={approvals.isRefetching}
           onRefresh={() => void queryClient.invalidateQueries({ queryKey: keys.approvals })}
-          tintColor={colour.primary}
+          tintColor={colour.accent}
         />
       }
     >
-      <Text style={styles.title}>Approvals</Text>
-
       {approvals.data ? (
-        approvals.data.approvals.length > 0 ? (
-          approvals.data.approvals.map((a, index) => {
-            const isOpen = expanded === a.id
-            const overdue = a.waitingHours >= 48
-
-            return (
-              <Appear key={a.id} index={index}>
-                <Card>
-                  {/* Summary. Everything needed to decide whether this one
-                      warrants opening, and nothing else. */}
-                  <Press
-                    accessibilityLabel={`${a.employeeName}, ${a.leaveTypeName}, ${a.daysCount} days`}
-                    accessibilityHint={isOpen ? 'Collapses this request' : 'Opens this request'}
-                    scaleTo={0.99}
-                    onPress={() => {
-                      setExpanded(isOpen ? null : a.id)
-                      setNote('')
-                      setOverride('')
-                      setError(null)
-                    }}
-                  >
-                    <View style={styles.summaryRow}>
-                      <View style={styles.summaryMain}>
-                        <Text style={styles.who}>{a.employeeName}</Text>
-                        <Text style={styles.what}>
-                          {a.leaveTypeName} · {a.daysCount} day{a.daysCount === 1 ? '' : 's'}
-                        </Text>
-                        <Text style={styles.when}>
-                          {formatRange(a.start, a.end)}
-                        </Text>
-                      </View>
-
-                      <View style={styles.summaryEnd}>
-                        {overdue ? (
-                          <Badge label={`${Math.round(a.waitingHours)}h`} tone="warning" />
-                        ) : a.warnings.length > 0 ? (
-                          <Badge label="Coverage" tone="warning" />
-                        ) : null}
-                        <Text style={styles.chevron}>{isOpen ? '⌃' : '⌄'}</Text>
-                      </View>
+        queue.map((a, index) => {
+          const conflicts = a.warnings.length
+          const busy = decide.isPending && decide.variables?.id === a.id
+          const first = a.employeeName.split(' ')[0]
+          const open = () => router.push(`/manage/approvals/${a.id}`)
+          return (
+            <Appear key={a.id} index={index}>
+              <Card>
+                <Press onPress={open} scaleTo={0.99} accessibilityLabel={`Open ${a.employeeName}'s request`}>
+                  <View style={styles.row}>
+                    <Avatar
+                      name={a.employeeName}
+                      size={44}
+                      colour={conflicts > 0 ? colour.primary : colour.accent}
+                    />
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text style={styles.rowTitle}>
+                        {first} · {a.leaveTypeName.toLowerCase()}
+                      </Text>
+                      <Text style={[styles.rowSub, conflicts > 0 && { color: colour.warning }]}>
+                        {formatRange(a.start, a.end)} ·{' '}
+                        {conflicts > 0
+                          ? `${conflicts} conflict${conflicts === 1 ? '' : 's'}`
+                          : 'no conflicts'}
+                      </Text>
                     </View>
-                  </Press>
+                  </View>
+                </Press>
 
-                  {isOpen ? (
+                {error?.id === a.id ? <ErrorNotice message={error.message} /> : null}
+
+                <View style={styles.actions}>
+                  {a.requiresOverride || conflicts > 0 ? (
                     <>
-                      <Divider />
-
-                      {a.reason ? <Text style={styles.reason}>“{a.reason}”</Text> : null}
-
-                      <View style={styles.contextRow}>
-                        <Context label="Balance after" value={String(a.balanceAfter)} />
-                        <Context
-                          label="Waiting"
-                          value={`${Math.round(a.waitingHours)}h`}
-                          tone={overdue ? 'warn' : 'default'}
-                        />
-                        <Context
-                          label="Coverage"
-                          value={a.warnings.length === 0 ? 'Clear' : `${a.warnings.length} issue(s)`}
-                          tone={a.warnings.length === 0 ? 'ok' : 'warn'}
-                        />
-                      </View>
-
-                      {a.warnings.map((w) => (
-                        <ErrorNotice key={w.code} tone="warning" message={w.message} />
-                      ))}
-
-                      <View style={styles.form}>
-                        <Text style={styles.fieldLabel}>
-                          Note to {a.employeeName.split(' ')[0]} (optional)
-                        </Text>
-                        <TextInput
-                          value={note}
-                          onChangeText={setNote}
-                          placeholder="Anything they should know"
-                          placeholderTextColor={colour.textFaint}
-                          style={styles.input}
-                          multiline
-                        />
-
-                        {a.requiresOverride ? (
-                          <>
-                            <Text style={styles.fieldLabel}>
-                              Reason for approving against the coverage rule (required)
-                            </Text>
-                            <TextInput
-                              value={override}
-                              onChangeText={setOverride}
-                              placeholder="e.g. Cover arranged with the Lagos team"
-                              placeholderTextColor={colour.textFaint}
-                              style={styles.input}
-                              multiline
-                            />
-                          </>
-                        ) : null}
-                      </View>
-
-                      {error?.id === a.id ? <ErrorNotice message={error.message} /> : null}
-
-                      <View style={styles.actions}>
-                        <Button
-                          label="Decline"
-                          variant="secondary"
-                          style={styles.action}
-                          onPress={() => void act(a.id, 'decline', false)}
-                        />
-                        <Button
-                          label="Approve"
-                          style={styles.action}
-                          loading={decide.isPending && expanded === a.id}
-                          onPress={() => void act(a.id, 'approve', a.requiresOverride)}
-                        />
-                      </View>
+                      <Button label="Review" onPress={open} style={styles.grow} />
+                      <Button
+                        label="Decline"
+                        variant="secondary"
+                        loading={busy}
+                        onPress={() => void declineFromCard(a.id)}
+                      />
                     </>
-                  ) : null}
-                </Card>
-              </Appear>
-            )
-          })
-        ) : (
-          <EmptyState
-            title="Nothing waiting"
-            body="Requests from your team will appear here as soon as they are submitted."
-          />
-        )
+                  ) : (
+                    <>
+                      <Button
+                        label="Approve"
+                        loading={busy}
+                        onPress={() => void approveClean(a.id)}
+                        style={styles.grow}
+                      />
+                      <Button label="Open" variant="secondary" onPress={open} />
+                    </>
+                  )}
+                </View>
+              </Card>
+            </Appear>
+          )
+        })
       ) : (
         <Card>
           <Skeleton height={24} />
           <Skeleton height={80} />
         </Card>
       )}
-    </Screen>
-  )
-}
 
-/**
- * "12–16 Aug" rather than two ISO dates. The collapsed row has one line for
- * this and a manager is reading a dozen of them.
- */
-function formatRange(start: string, end: string): string {
-  const from = new Date(`${start}T00:00:00`)
-  const to = new Date(`${end}T00:00:00`)
-  const month = (d: Date) => d.toLocaleDateString(undefined, { month: 'short' })
-  const day = (d: Date) => d.getDate()
+      {plansWaiting.map((p, i) => (
+        <Appear key={p.id} index={queue.length + i}>
+          <Card onPress={() => router.push(`/manage/training/${p.id}`)}>
+            <View style={styles.row}>
+              <Avatar name={p.employeeName} size={44} colour={colour.accent} />
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.rowTitle}>
+                  {p.employeeName.split(' ')[0]} · training plan
+                </Text>
+                <Text style={[styles.rowSub, { color: colour.accent }]}>
+                  {p.periodLabel} · {p.items.length} course{p.items.length === 1 ? '' : 's'} · needs approval
+                </Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </View>
+          </Card>
+        </Appear>
+      ))}
 
-  // Built explicitly rather than from a locale-formatted range. Asking the
-  // locale for "day + month" gives "Sep 24" in one place and "24 Sep" in
-  // another, which turned "20–24 Sep" into "20–Sep 24".
-  if (start === end) return `${day(from)} ${month(from)}`
-  if (start.slice(0, 7) === end.slice(0, 7)) {
-    return `${day(from)}–${day(to)} ${month(to)}`
-  }
-  return `${day(from)} ${month(from)} – ${day(to)} ${month(to)}`
-}
+      {flags.map((r, i) => (
+        <Appear key={r.employeeId} index={queue.length + plansWaiting.length + i}>
+          <Card tone="warning" onPress={() => router.push('/manage/attendance')}>
+            <View style={styles.row}>
+              <View style={styles.flagMark}>
+                <Text style={styles.flagGlyph}>!</Text>
+              </View>
+              <View style={{ flex: 1, gap: 2 }}>
+                <Text style={styles.rowTitle}>
+                  {r.employeeName.split(' ')[0]} · {r.daysLate} late{r.daysLate === 1 ? '' : 's'} in
+                  30 days
+                </Text>
+                <Text style={[styles.rowSub, { color: colour.warning }]}>
+                  {r.daysLate >= threshold
+                    ? `At the threshold of ${threshold}`
+                    : `Talk to them before it hits ${threshold}`}
+                </Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </View>
+          </Card>
+        </Appear>
+      ))}
 
-function Context({
-  label,
-  value,
-  tone = 'default',
-}: {
-  label: string
-  value: string
-  tone?: 'default' | 'ok' | 'warn'
-}) {
-  return (
-    <View>
-      <Text
-        style={[
-          styles.contextValue,
-          tone === 'ok' && { color: colour.success },
-          tone === 'warn' && { color: colour.warning },
-        ]}
-      >
-        {value}
-      </Text>
-      <Text style={styles.contextLabel}>{label}</Text>
-    </View>
+      {approvals.data && needs === 0 ? (
+        <EmptyState
+          title="Nothing waiting"
+          body="Requests from your team will appear here as soon as they are submitted."
+        />
+      ) : null}
+    </SheetPage>
   )
 }
 
 const styles = StyleSheet.create({
-  title: {
-    fontSize: font.size.xxl,
+  escalates: { fontSize: font.size.lg, color: colour.textMuted, fontFamily: font.family },
+
+  row: { flexDirection: 'row', alignItems: 'center', gap: space.md },
+  rowTitle: {
+    fontSize: font.size.lg,
     fontWeight: font.weight.bold,
     color: colour.text,
-    paddingTop: space.lg,
+    fontFamily: font.family,
   },
-  summaryRow: { flexDirection: 'row', gap: space.md, alignItems: 'center' },
-  summaryMain: { flex: 1, gap: 2 },
-  summaryEnd: { alignItems: 'flex-end', gap: space.xs },
-  chevron: { fontSize: 16, color: colour.textFaint, lineHeight: 18 },
-  who: { fontSize: font.size.md, fontWeight: font.weight.semibold, color: colour.text },
-  what: { fontSize: font.size.md, color: colour.text },
-  when: { fontSize: font.size.sm, color: colour.textMuted },
-  reason: { fontSize: font.size.md, color: colour.textMuted, fontStyle: 'italic', lineHeight: 21 },
-
-  contextRow: { flexDirection: 'row', gap: space.xl },
-  contextValue: { fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colour.text },
-  contextLabel: { fontSize: font.size.xs, color: colour.textMuted, marginTop: 2 },
-
-  form: { gap: space.sm },
-  fieldLabel: { fontSize: font.size.sm, fontWeight: font.weight.semibold, color: colour.textMuted },
-  input: {
-    borderWidth: 1,
-    borderColor: colour.borderStrong,
-    borderRadius: radius.md,
-    padding: space.md,
-    minHeight: 64,
-    fontSize: font.size.md,
-    color: colour.text,
-    backgroundColor: colour.surface,
-    textAlignVertical: 'top',
-  },
+  rowSub: { fontSize: font.size.md, color: colour.textMuted, fontFamily: font.family },
+  chevron: { fontSize: font.size.xl, color: colour.textFaint, fontFamily: font.family },
 
   actions: { flexDirection: 'row', gap: space.sm },
-  action: { flex: 1 },
+  grow: { flex: 1 },
+
+  flagMark: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: colour.warningSoft,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  flagGlyph: {
+    fontSize: font.size.xl,
+    fontWeight: font.weight.bold,
+    color: colour.warning,
+    fontFamily: font.family,
+  },
 })

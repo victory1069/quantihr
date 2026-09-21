@@ -32,6 +32,7 @@ import {
   ErrorNotice,
   Screen,
   Skeleton,
+  SheetPage,
 } from '../src/ui/components'
 import { Avatar, Chip, Label } from '../src/ui/primitives'
 import { colour, font, radius, space } from '../src/ui/theme'
@@ -78,7 +79,8 @@ export default function Me() {
   ) ?? []
 
   return (
-    <Screen
+    <SheetPage
+      title="Me"
       refreshControl={
         <RefreshControl
           refreshing={documents.isRefetching || me.isRefetching}
@@ -97,7 +99,7 @@ export default function Me() {
             <View style={styles.identity}>
               <Avatar
                 name={`${me.data.employee.firstName} ${me.data.employee.lastName}`}
-                size={52}
+                size={44}
                 colour={colour.primary}
               />
               <View style={{ flex: 1, gap: 2 }}>
@@ -157,6 +159,12 @@ export default function Me() {
             label="Tasks"
             detail="What you took on in meetings"
             onPress={() => router.push('/tasks')}
+          />
+          <Divider />
+          <HubRow
+            label="Learning"
+            detail="Your training plans and certificates"
+            onPress={() => router.push('/learning')}
           />
         </Card>
       </Appear>
@@ -258,9 +266,14 @@ export default function Me() {
             variant="secondary"
             onPress={() => router.push('/profile')}
           />
+          <Button
+            label="Change password"
+            variant="ghost"
+            onPress={() => router.push('/change-password')}
+          />
         </Card>
       </Appear>
-    </Screen>
+    </SheetPage>
   )
 }
 
@@ -335,7 +348,7 @@ const styles = StyleSheet.create({
   signBody: {
     fontSize: font.size.sm,
     color: colour.textMuted,
-    lineHeight: 20,
+    lineHeight: 18,
     fontFamily: font.family,
   },
 
@@ -376,7 +389,7 @@ const styles = StyleSheet.create({
   hint: {
     fontSize: font.size.sm,
     color: colour.textFaint,
-    lineHeight: 20,
+    lineHeight: 18,
     fontFamily: font.family,
   },
 })

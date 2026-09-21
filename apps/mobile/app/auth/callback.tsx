@@ -55,9 +55,19 @@ export default function AuthCallback() {
           accessToken: string
           refreshToken: string
           deviceReviewRequired: boolean
+          mustChangePassword?: boolean
         }
         await setTokens(session.accessToken, session.refreshToken)
         useSession.getState().setDeviceReviewRequired(session.deviceReviewRequired)
+        useSession.getState().setMustChangePassword(session.mustChangePassword ?? false)
+
+        // The welcome link and a temporary password arrive in the same
+        // email; whichever door is used, the temporary password has to go
+        // before anything else is seen.
+        if (session.mustChangePassword) {
+          router.replace('/change-password')
+          return
+        }
 
         // First time on this device: explain the binding, biometrics and
         // notifications before dropping them on Home.
@@ -83,7 +93,7 @@ export default function AuthCallback() {
 
   return (
     <View style={styles.centre}>
-      <LogoLoader size={88} />
+      <LogoLoader size={72} />
       <Text style={styles.text}>Signing you in…</Text>
     </View>
   )
@@ -92,15 +102,15 @@ export default function AuthCallback() {
 const styles = StyleSheet.create({
   centre: {
     flex: 1,
+    backgroundColor: colour.bg,
     alignItems: 'center',
     justifyContent: 'center',
     gap: space.xl,
-    backgroundColor: colour.bg,
   },
   centreColumn: {
     flex: 1,
-    justifyContent: 'center',
     backgroundColor: colour.bg,
+    justifyContent: 'center',
     paddingHorizontal: space.lg,
     width: '100%',
     maxWidth: MAX_CONTENT_WIDTH,

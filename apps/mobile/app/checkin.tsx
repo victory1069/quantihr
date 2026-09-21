@@ -250,7 +250,7 @@ const styles = StyleSheet.create({
     paddingTop: space.lg,
   },
   cardTitle: { fontSize: font.size.lg, fontWeight: font.weight.semibold, color: colour.text },
-  cardBody: { fontSize: font.size.md, color: colour.textMuted, lineHeight: 21, flex: 1 },
+  cardBody: { fontSize: font.size.md, color: colour.textMuted, lineHeight: 19, flex: 1 },
   meta: { fontSize: font.size.sm, color: colour.textFaint },
   rowBetween: {
     flexDirection: 'row',
@@ -263,7 +263,7 @@ const styles = StyleSheet.create({
     borderColor: colour.borderStrong,
     borderRadius: radius.md,
     paddingHorizontal: space.md,
-    minHeight: 56,
+    minHeight: 50,
     fontSize: 24,
     letterSpacing: 6,
     textAlign: 'center',
@@ -275,6 +275,6 @@ const styles = StyleSheet.create({
     fontSize: font.size.sm,
     color: colour.textFaint,
     textAlign: 'center',
-    lineHeight: 19,
+    lineHeight: 17,
   },
 })

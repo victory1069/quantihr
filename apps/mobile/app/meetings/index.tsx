@@ -15,6 +15,7 @@ import {
   Badge,
   Card,
   EmptyState,
+  Fab,
   Screen,
   SegmentedTabs,
   Skeleton,
@@ -22,6 +23,7 @@ import {
 import { Label } from '../../src/ui/primitives'
 import { colour, font, space } from '../../src/ui/theme'
 import { keys, useMeetings, type MeetingListItemView } from '../../src/api/queries'
+import { isManager, useSession } from '../../src/store/session'
 
 type Window = 'past' | 'upcoming'
 type Tab = Window | 'codes'
@@ -46,9 +48,15 @@ export default function Meetings() {
 
   const rows = meetings.data?.meetings ?? []
   const waiting = rows.filter((m) => m.awaitingYourReview)
+  const me = useSession((s) => s.me)
+  const managerMode = useSession((s) => s.managerMode)
+  const canCreate = managerMode && isManager(me)
 
   return (
     <Screen
+      floating={
+        canCreate ? <Fab label="Create a meeting" onPress={() => router.push('/meetings/new')} /> : null
+      }
       refreshControl={
         <RefreshControl
           refreshing={meetings.isRefetching}
@@ -177,7 +185,7 @@ const styles = StyleSheet.create({
   waitingText: {
     fontSize: font.size.md,
     color: colour.text,
-    lineHeight: 22,
+    lineHeight: 20,
     fontFamily: font.family,
   },
 

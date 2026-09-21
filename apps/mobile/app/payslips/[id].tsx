@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
 
   explainer: { backgroundColor: colour.primarySoft, borderColor: colour.primaryBorder },
   explainerTitle: { fontSize: font.size.md, fontWeight: font.weight.semibold, color: colour.primary },
-  explainerBody: { fontSize: font.size.md, color: colour.text, lineHeight: 22 },
+  explainerBody: { fontSize: font.size.md, color: colour.text, lineHeight: 20 },
   changes: { gap: space.xs, paddingTop: space.sm },
   changeRow: { flexDirection: 'row', justifyContent: 'space-between', gap: space.md },
   changeLabel: { fontSize: font.size.sm, color: colour.textMuted, flex: 1 },
@@ -199,5 +199,5 @@ const styles = StyleSheet.create({
   totalValue: { fontSize: font.size.lg, fontWeight: font.weight.bold, color: colour.text },
 
   none: { fontSize: font.size.md, color: colour.textMuted },
-  footnote: { fontSize: font.size.sm, color: colour.textFaint, lineHeight: 19 },
+  footnote: { fontSize: font.size.sm, color: colour.textFaint, lineHeight: 17 },
 })

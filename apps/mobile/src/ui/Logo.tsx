@@ -1,83 +1,109 @@
 /**
  * The Quanti mark, drawn with Views.
  *
- * `react-native-svg` is not installed, and it turns out not to be needed: the
- * mark is eight circles on a ring plus one rounded bar, which are a border
- * radius and a rotation. Building it this way also means each dot is an
- * independently animatable node, which is what makes the loader below possible.
+ * A rounded-square ring with a diagonal tail — a Q, in the geometry of the
+ * 2026 brand. `react-native-svg` is not installed and is not needed: the ring
+ * is a border and a corner radius, the tail is a rotated rounded bar, and the
+ * gap where the tail leaves the ring is a small patch in the ground colour.
+ * Building it this way also makes each part independently animatable, which is
+ * what the loader below relies on.
  *
- * Geometry is copied from the supplied SVG (64×64 viewBox) and scaled, so the
- * app icon and the in-app mark stay identical.
+ * Proportions are taken from the supplied 480-unit icon and scaled.
  */
 
 import { useEffect, useRef } from 'react'
 import { Animated, Easing, StyleSheet, View, type ViewStyle } from 'react-native'
 import { colour } from './theme'
 
-/** Dot centres from the source SVG, in its 64-unit space. */
-const DOTS = [
-  { x: 32, y: 10 },
-  { x: 48, y: 18 },
-  { x: 54, y: 34 },
-  { x: 46, y: 49 },
-  { x: 30, y: 54 },
-  { x: 15, y: 46 },
-  { x: 10, y: 30 },
-  { x: 17, y: 15 },
-] as const
+const VIEWBOX = 480
 
-const VIEWBOX = 64
-const DOT_R = 5
-const BAR_W = 22
-const BAR_H = 9
+/** Ring bounds and stroke, in the 480-unit space. */
+const RING = { left: 30, top: 30, size: 420, stroke: 62, radius: 168 }
+/** The tail: a rounded bar from the ring's inner corner out past the edge. */
+const TAIL = { x: 300, y: 300, length: 188, thickness: 62 }
+/** The notch in the ring the tail passes through. */
+const NOTCH = { x: 322, y: 322, size: 130 }
 
 export interface LogoProps {
   size?: number
+  /** Ring colour. */
   dotColour?: string
+  /** Tail colour. */
   barColour?: string
+  /**
+   * Unused since the notch became a true cut-out; kept so call sites that
+   * matched it to their surface keep compiling. The mark now sits on anything.
+   */
+  ground?: string
   style?: ViewStyle
+}
+
+/**
+ * The ring, drawn twice inside two clipping boxes that together cover the
+ * whole mark except the notch. A painted notch only ever matched one
+ * background; a clipped one is transparent over a photo, a gradient or the
+ * drifting colour on sign-in.
+ */
+function Ring({ k, colourValue }: { k: number; colourValue: string }) {
+  const full = VIEWBOX * k
+  const nx = NOTCH.x * k
+  const ny = NOTCH.y * k
+  const ring = (dx: number, dy: number) => (
+    <View
+      style={{
+        position: 'absolute',
+        left: RING.left * k - dx,
+        top: RING.top * k - dy,
+        width: RING.size * k,
+        height: RING.size * k,
+        borderRadius: RING.radius * k,
+        borderWidth: RING.stroke * k,
+        borderColor: colourValue,
+      }}
+    />
+  )
+  return (
+    <>
+      {/* Everything above the notch. */}
+      <View style={{ position: 'absolute', left: 0, top: 0, width: full, height: ny, overflow: 'hidden' }}>
+        {ring(0, 0)}
+      </View>
+      {/* Everything left of the notch, below that line. */}
+      <View style={{ position: 'absolute', left: 0, top: ny, width: nx, height: full - ny, overflow: 'hidden' }}>
+        {ring(0, ny)}
+      </View>
+    </>
+  )
 }
 
 export function LogoMark({
   size = 64,
-  dotColour = colour.primary,
-  barColour = colour.accent,
+  dotColour = colour.text,
+  barColour = colour.primary,
   style,
 }: LogoProps) {
   const k = size / VIEWBOX
 
   return (
     <View style={[{ width: size, height: size }, style]}>
-      {DOTS.map((d, i) => (
-        <View
-          key={i}
-          style={{
-            position: 'absolute',
-            left: (d.x - DOT_R) * k,
-            top: (d.y - DOT_R) * k,
-            width: DOT_R * 2 * k,
-            height: DOT_R * 2 * k,
-            borderRadius: DOT_R * k,
-            backgroundColor: dotColour,
-          }}
-        />
-      ))}
+      <Ring k={k} colourValue={dotColour} />
       <View
         style={{
           position: 'absolute',
-          left: 38 * k,
-          top: 38 * k,
-          width: BAR_W * k,
-          height: BAR_H * k,
-          borderRadius: (BAR_H / 2) * k,
+          left: TAIL.x * k,
+          top: TAIL.y * k,
+          width: TAIL.length * k,
+          height: TAIL.thickness * k,
+          borderRadius: (TAIL.thickness / 2) * k,
           backgroundColor: barColour,
-          // The source SVG rotates about its top-left corner, not its centre.
+          // Rotate about the bar's start, not its centre, so the tail leaves
+          // the ring at a fixed point regardless of length.
           transform: [
-            { translateX: -((BAR_W * k) / 2) },
-            { translateY: -((BAR_H * k) / 2) },
+            { translateX: -((TAIL.length * k) / 2) },
+            { translateY: -((TAIL.thickness * k) / 2) },
             { rotate: '45deg' },
-            { translateX: (BAR_W * k) / 2 },
-            { translateY: (BAR_H * k) / 2 },
+            { translateX: (TAIL.length * k) / 2 },
+            { translateY: (TAIL.thickness * k) / 2 },
           ],
         }}
       />
@@ -88,130 +114,108 @@ export function LogoMark({
 /**
  * The mark as a loader.
  *
- * The bar sweeps like a clock hand while the dots brighten in sequence just
- * ahead of it. Both run on the native driver (transform and opacity only), so
- * the animation stays smooth even while the JS thread is busy hydrating the
- * cache — which is exactly when this is on screen.
+ * The ring breathes and the tail sweeps once round and back, like a hand
+ * settling. Transform and opacity only, so it runs on the native driver and
+ * stays smooth while the JS thread is hydrating the cache — which is exactly
+ * when this is on screen.
  */
 export function LogoLoader({
   size = 96,
-  dotColour = colour.primary,
-  barColour = colour.accent,
+  dotColour = colour.text,
+  barColour = colour.primary,
 }: LogoProps) {
-  const k = size / VIEWBOX
-  const spin = useRef(new Animated.Value(0)).current
-  const pulses = useRef(DOTS.map(() => new Animated.Value(0.25))).current
+  const breathe = useRef(new Animated.Value(0)).current
+  const sweep = useRef(new Animated.Value(0)).current
 
   useEffect(() => {
-    const rotation = Animated.loop(
-      Animated.timing(spin, {
-        toValue: 1,
-        duration: 1600,
-        easing: Easing.linear,
-        useNativeDriver: true,
-      }),
+    const ring = Animated.loop(
+      Animated.sequence([
+        Animated.timing(breathe, {
+          toValue: 1,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+        Animated.timing(breathe, {
+          toValue: 0,
+          duration: 900,
+          easing: Easing.inOut(Easing.quad),
+          useNativeDriver: true,
+        }),
+      ]),
     )
-
-    // Each dot lights slightly after the one before it, so the ring reads as a
-    // travelling wave rather than eight independent blinks.
-    const wave = Animated.loop(
-      Animated.stagger(
-        110,
-        pulses.map((value) =>
-          Animated.sequence([
-            Animated.timing(value, {
-              toValue: 1,
-              duration: 260,
-              easing: Easing.out(Easing.quad),
-              useNativeDriver: true,
-            }),
-            Animated.timing(value, {
-              toValue: 0.25,
-              duration: 520,
-              easing: Easing.in(Easing.quad),
-              useNativeDriver: true,
-            }),
-          ]),
-        ),
-      ),
+    const tail = Animated.loop(
+      Animated.sequence([
+        Animated.timing(sweep, {
+          toValue: 1,
+          duration: 1400,
+          easing: Easing.inOut(Easing.cubic),
+          useNativeDriver: true,
+        }),
+        Animated.delay(200),
+      ]),
     )
-
-    rotation.start()
-    wave.start()
+    ring.start()
+    tail.start()
     return () => {
-      rotation.stop()
-      wave.stop()
+      ring.stop()
+      tail.stop()
     }
-  }, [spin, pulses])
-
-  const rotate = spin.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['45deg', '405deg'],
-  })
+  }, [breathe, sweep])
 
   return (
-    <View style={{ width: size, height: size }}>
-      {DOTS.map((d, i) => (
-        <Animated.View
-          key={i}
-          style={{
-            position: 'absolute',
-            left: (d.x - DOT_R) * k,
-            top: (d.y - DOT_R) * k,
-            width: DOT_R * 2 * k,
-            height: DOT_R * 2 * k,
-            borderRadius: DOT_R * k,
-            backgroundColor: dotColour,
-            opacity: pulses[i],
-            transform: [
-              {
-                scale: pulses[i]!.interpolate({
-                  inputRange: [0.25, 1],
-                  outputRange: [0.82, 1.12],
-                }),
-              },
-            ],
-          }}
-        />
-      ))}
-
-      {/* Rotates about the ring centre, so the bar sweeps rather than wobbles. */}
-      <Animated.View
-        style={{
-          position: 'absolute',
-          left: size / 2,
-          top: size / 2 - (BAR_H * k) / 2,
-          width: BAR_W * k,
-          height: BAR_H * k,
-          borderRadius: (BAR_H / 2) * k,
-          backgroundColor: barColour,
-          transformOrigin: 'left center',
-          transform: [{ rotate }],
-        }}
-      />
-    </View>
+    <Animated.View
+      style={{
+        width: size,
+        height: size,
+        opacity: breathe.interpolate({ inputRange: [0, 1], outputRange: [0.7, 1] }),
+        transform: [
+          { scale: breathe.interpolate({ inputRange: [0, 1], outputRange: [0.96, 1] }) },
+          {
+            rotate: sweep.interpolate({ inputRange: [0, 1], outputRange: ['0deg', '360deg'] }),
+          },
+        ],
+      }}
+    >
+      <LogoMark size={size} dotColour={dotColour} barColour={barColour} />
+    </Animated.View>
   )
 }
 
-/** Horizontal lockup: mark plus wordmark. */
+/** Wordmark beside the mark: "Quanti" with a small superscript "HR". */
 export function LogoLockup({
-  size = 34,
-  tint = colour.text,
+  size = 28,
+  colourText = colour.text,
+  hrColour = colour.primary,
+  style,
 }: {
   size?: number
-  tint?: string
+  colourText?: string
+  hrColour?: string
+  style?: ViewStyle
 }) {
   return (
-    <View style={styles.lockup}>
-      <LogoMark size={size} />
-      <Animated.Text style={[styles.wordmark, { color: tint, fontSize: size * 0.82 }]}>
+    <View style={[styles.lockup, style]}>
+      <LogoMark size={size} dotColour={colourText} barColour={hrColour} />
+      <Animated.Text
+        style={{
+          fontSize: size * 0.86,
+          fontWeight: '700',
+          letterSpacing: -size * 0.03,
+          color: colourText,
+        }}
+      >
         Quanti
+        <Animated.Text
+          style={{ fontSize: size * 0.4, fontWeight: '600', letterSpacing: 2, color: hrColour }}
+        >
+          {'  HR'}
+        </Animated.Text>
       </Animated.Text>
     </View>
   )
 }
 
 const styles = StyleSheet.create({
-  lockup: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  wordmark: { fontWeight: '700', letterSpacing: -1.2 },
+  lockup: { flexDirection: 'row', alignItems: 'center', gap: 8 },
 })
