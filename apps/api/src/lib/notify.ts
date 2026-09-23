@@ -33,6 +33,7 @@ export type NotificationEvent =
   | 'training.starts'
   | 'training.proof_due'
   | 'training.plan_due'
+  | 'attendance.dispute_resolved'
 
 export interface NotificationInput {
   orgId: string
@@ -70,6 +71,10 @@ const PREFERENCE_KEY: Record<NotificationEvent, string> = {
   'training.starts': 'training',
   'training.proof_due': 'training',
   'training.plan_due': 'training',
+  // No dedicated preference category for attendance exists yet beyond the
+  // check-in reminder itself, and this is close enough to that family not to
+  // warrant a fifth one.
+  'attendance.dispute_resolved': 'checkinReminders',
 }
 
 /**

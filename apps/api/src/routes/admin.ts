@@ -8,7 +8,7 @@
 
 import ExcelJS from 'exceljs'
 import type { FastifyInstance } from 'fastify'
-import { and, desc, eq, gte, sql } from 'drizzle-orm'
+import { and, desc, eq, gte, isNotNull, sql } from 'drizzle-orm'
 import { z } from 'zod'
 import {
   ApiError,
@@ -710,7 +710,11 @@ export function registerAdminRoutes(app: FastifyInstance, db: Database): void {
         })
         .from(devices)
         .innerJoin(employees, eq(employees.id, devices.employeeId))
-        .where(eq(devices.approved, false)),
+        // approved=false alone also matches a device that was simply retired
+        // when a later one got approved (routes/admin.ts devices/approve) —
+        // that device never itself asked for review, so it must not sit in
+        // this queue with no way to clear it (DEF-005).
+        .where(and(eq(devices.approved, false), isNotNull(devices.approvalRequestedAt))),
     )
 
     return reply.send({

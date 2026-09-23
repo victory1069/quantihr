@@ -19,6 +19,7 @@ import {
   type ISODate,
 } from '@quanti/shared'
 import {
+  attendanceDisputes,
   attendanceRecords,
   coverageRules,
   employees,
@@ -382,6 +383,150 @@ export function registerTeamRoutes(app: FastifyInstance, db: Database): void {
     })
 
     return reply.send({ records: rows })
+  })
+
+  /**
+   * A disputed record sits in `pending_review` (routes/attendance.ts) until a
+   * manager acts on it — this is that action, mirroring the meeting-dispute
+   * queue in routes/meetings.ts: a list scoped to the manager's team, and a
+   * resolve step that either corrects the record or leaves it as it was.
+   */
+  app.get('/v1/team/attendance-disputes', async (request, reply) => {
+    const auth = requireRole(request, 'manager', 'hr_admin', 'owner')
+
+    const disputes = await tenant(request, async (tx) => {
+      const teamIds = await visibleTeamIds(tx, auth.employeeId, isHrAdmin(auth), false)
+      if (teamIds.length === 0) return []
+
+      return tx
+        .select({
+          id: attendanceDisputes.id,
+          recordId: attendanceDisputes.recordId,
+          employeeId: attendanceDisputes.employeeId,
+          firstName: employees.firstName,
+          lastName: employees.lastName,
+          reason: attendanceDisputes.reason,
+          createdAt: attendanceDisputes.createdAt,
+          recordDate: attendanceRecords.date,
+          recordStatus: attendanceRecords.status,
+        })
+        .from(attendanceDisputes)
+        .innerJoin(employees, eq(employees.id, attendanceDisputes.employeeId))
+        .innerJoin(attendanceRecords, eq(attendanceRecords.id, attendanceDisputes.recordId))
+        .where(
+          and(
+            inArray(attendanceDisputes.employeeId, teamIds),
+            eq(attendanceDisputes.status, 'open'),
+          ),
+        )
+        .orderBy(attendanceDisputes.createdAt)
+    })
+
+    return reply.send({
+      disputes: disputes.map((d) => ({
+        id: d.id,
+        recordId: d.recordId,
+        employeeId: d.employeeId,
+        employeeName: fullName(d),
+        reason: d.reason,
+        createdAt: d.createdAt.toISOString(),
+        recordDate: d.recordDate,
+        recordStatus: d.recordStatus,
+      })),
+    })
+  })
+
+  app.post('/v1/team/attendance-disputes/:id', async (request, reply) => {
+    const auth = requireRole(request, 'manager', 'hr_admin', 'owner')
+    const { id } = request.params as { id: string }
+    const body = schemas.attendance.resolveAttendanceDispute.parse(request.body)
+
+    const result = await tenant(request, async (tx) => {
+      const [existing] = await tx
+        .select()
+        .from(attendanceDisputes)
+        .where(eq(attendanceDisputes.id, id))
+        .limit(1)
+
+      if (!existing) throw new ApiError(ERROR_CODES.NOT_FOUND, 'Dispute not found', 404)
+
+      const teamIds = await visibleTeamIds(tx, auth.employeeId, isHrAdmin(auth), false)
+      if (!teamIds.includes(existing.employeeId)) {
+        throw new ApiError(
+          ERROR_CODES.AUTH_FORBIDDEN,
+          'That dispute belongs to someone outside your team',
+          403,
+        )
+      }
+      if (existing.status !== 'open') {
+        throw new ApiError(
+          ERROR_CODES.ATTENDANCE_DISPUTE_NOT_OPEN,
+          `That dispute was already ${existing.outcome ?? existing.status}`,
+          409,
+        )
+      }
+
+      await tx
+        .update(attendanceDisputes)
+        .set({
+          status: 'resolved',
+          outcome: body.outcome,
+          note: body.note ?? null,
+          resolvedBy: auth.userId,
+          resolvedAt: new Date(),
+        })
+        .where(eq(attendanceDisputes.id, id))
+
+      if (body.outcome === 'upheld') {
+        await tx
+          .update(attendanceRecords)
+          .set({ status: body.attendanceStatus })
+          .where(eq(attendanceRecords.id, existing.recordId))
+      } else if (existing.previousStatus) {
+        // Dismissed: restore exactly what the record was before the dispute
+        // flagged it pending_review, rather than guess at a status.
+        await tx
+          .update(attendanceRecords)
+          .set({ status: existing.previousStatus })
+          .where(eq(attendanceRecords.id, existing.recordId))
+      }
+
+      await audit(tx, {
+        orgId: auth.orgId,
+        actorUserId: auth.userId,
+        action: 'attendance.dispute_resolved',
+        entityType: 'attendance_dispute',
+        entityId: id,
+        before: { status: 'open' },
+        after: { outcome: body.outcome, correctedTo: body.attendanceStatus ?? null },
+        ip: request.ip,
+      })
+
+      const [employee] = await tx
+        .select({ userId: employees.userId })
+        .from(employees)
+        .where(eq(employees.id, existing.employeeId))
+        .limit(1)
+
+      if (employee?.userId) {
+        await queueNotification(tx, {
+          orgId: auth.orgId,
+          userId: employee.userId,
+          event: 'attendance.dispute_resolved',
+          title: 'Attendance query resolved',
+          body:
+            body.outcome === 'upheld'
+              ? 'Your attendance record was corrected.'
+              : 'Your attendance query was reviewed; the record stands.',
+          deepLink: '/attendance',
+          data: { disputeId: id, outcome: body.outcome },
+        })
+      }
+
+      return { id, status: 'resolved', outcome: body.outcome }
+    })
+
+    return reply.send(result)
   })
 }
 

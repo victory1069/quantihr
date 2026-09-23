@@ -216,6 +216,17 @@ export const attendanceDisputes = pgTable('attendance_disputes', {
   employeeId: uuid('employee_id').notNull().references(() => employees.id, { onDelete: 'cascade' }),
   reason: text('reason').notNull(),
   status: text('status').notNull().default('open'),
+  /**
+   * The record's own status at the moment the dispute was raised, captured
+   * because raising a dispute flags the record `pending_review` (spec §7) —
+   * unlike meeting disputes, which never touch the participant's status
+   * until upheld. Dismissing restores this exactly, rather than guessing.
+   */
+  previousStatus: text('previous_status'),
+  resolvedBy: uuid('resolved_by').references(() => users.id, { onDelete: 'set null' }),
+  resolvedAt: timestamp('resolved_at', { withTimezone: true }),
+  outcome: text('outcome'),
+  note: text('note'),
   createdAt: createdAt(),
 })
 
