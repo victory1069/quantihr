@@ -19,7 +19,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
+      # Full history, not the default shallow clone: test/schema-drift.test.ts
+      # rebuilds an old schema with `git show ad3ba4e:…/ddl.sql`.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       # Same Node as the deployed API (render.yaml NODE_VERSION).
       - uses: actions/setup-node@v4
