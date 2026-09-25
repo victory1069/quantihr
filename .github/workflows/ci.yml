@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+# A newer push to the same PR supersedes the run already in flight.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  shared-and-api:
+    name: shared + api — typecheck & test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same Node as the deployed API (render.yaml NODE_VERSION).
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.11.0
+          cache: npm
+
+      # Same install as render.yaml's buildCommand, so CI proves the tree the
+      # deployed API actually gets. apps/mobile's typecheck is deliberately
+      # not run here: it depends on expo-router's generated typed routes
+      # (.expo/types, gitignored), which only exist after `expo start`.
+      - name: Install
+        run: npm ci --include=dev --include-workspace-root --workspace @quanti/shared --workspace @quanti/api
+
+      - name: Typecheck
+        run: npm run typecheck --workspace @quanti/shared --workspace @quanti/api
+
+      - name: Test
+        run: npm test --workspace @quanti/shared --workspace @quanti/api
